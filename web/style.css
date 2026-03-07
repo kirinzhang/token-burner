@@ -942,3 +942,65 @@ svg defs {
   background: rgba(108,99,255,0.07); border: 1px solid rgba(108,99,255,0.15);
 }
 .log-empty { text-align: center; padding: 32px; font-size: 0.85rem; color: var(--text-muted); }
+
+/* ===================== PROVIDER CARDS ===================== */
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  padding: 4px 0 8px;
+}
+.provider-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: rgba(255,255,255,0.02);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  position: relative;
+}
+.provider-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(255,96,0,0.12);
+}
+.provider-card.connected { border-color: var(--success); }
+.provider-card-header {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.provider-icon { font-size: 1.4rem; }
+.provider-info { flex: 1; }
+.provider-name { font-weight: 600; font-size: 0.9rem; color: var(--text-primary); }
+.provider-desc { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.provider-badge {
+  font-size: 0.68rem; padding: 2px 8px; border-radius: 99px; font-weight: 600;
+}
+.provider-badge.connected { background: rgba(16,217,152,0.12); color: var(--success); }
+.provider-badge.active-label { background: rgba(255,96,0,0.12); color: var(--accent); }
+.provider-card-body { display: flex; flex-direction: column; gap: 8px; }
+.provider-key-input {
+  display: flex; gap: 6px; align-items: center;
+}
+.provider-key-input .form-input {
+  flex: 1; font-size: 0.82rem; padding: 8px 10px; min-width: 0;
+}
+.provider-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.btn-oauth {
+  display: flex; align-items: center; gap: 5px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: white; border: none; border-radius: 8px;
+  padding: 8px 14px; font-size: 0.8rem; font-weight: 600;
+  cursor: pointer; font-family: var(--font); transition: opacity 0.2s;
+}
+.btn-oauth:hover { opacity: 0.88; }
+.btn-use-provider {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 8px; padding: 6px 12px; font-size: 0.78rem;
+  cursor: pointer; font-family: var(--font); transition: all 0.2s;
+}
+.btn-use-provider:hover { border-color: var(--accent); color: var(--accent); }
+.btn-use-provider.active-btn { border-color: var(--accent); color: var(--accent); pointer-events: none; font-weight: 600; }
+.provider-key-link {
+  font-size: 0.72rem; color: var(--text-muted); text-decoration: none;
+  transition: color 0.2s;
+}
+.provider-key-link:hover { color: var(--accent-2); }
+.config-hint-inline { font-size: 0.8rem; color: var(--text-muted); }

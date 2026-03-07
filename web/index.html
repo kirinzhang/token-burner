@@ -261,34 +261,11 @@
 
       <!-- 配置面板 -->
       <section class="tab-panel" id="panel-config">
-        <div class="card glass">
+        <!-- 全局设置 -->
+        <div class="card glass" style="margin-bottom:16px">
           <div class="card-header">
-            <h2 class="card-title">⚙️ 配置管理</h2>
+            <h2 class="card-title">⚙️ 全局设置</h2>
           </div>
-
-          <div class="config-hint">
-            <div class="hint-icon">📄</div>
-            <div class="hint-body">
-              <strong>推荐使用 .env 文件配置</strong><br>
-              在项目根目录创建 <code>.env</code> 文件，参考 <code>.env.example</code>。
-              这里保存的配置会作为备选值（.env 优先级更高）。
-            </div>
-          </div>
-
-          <div class="form-section">
-            <label class="form-label" for="cfgApiKey">API Key</label>
-            <div class="input-with-badge">
-              <input type="password" class="form-input" id="cfgApiKey" placeholder="sk-xxxxxxxx...">
-              <span class="env-badge" id="cfgApiKeyBadge" style="display:none">📄 来自 .env</span>
-            </div>
-          </div>
-
-          <div class="form-section">
-            <label class="form-label" for="cfgBaseUrl">API Base URL</label>
-            <input type="url" class="form-input" id="cfgBaseUrl" placeholder="https://api.openai.com/v1">
-            <div class="form-hint">自定义代理或第三方兼容接口时修改此项</div>
-          </div>
-
           <div class="form-section">
             <label class="form-label" for="cfgCostLimit">费用上限（USD）</label>
             <div class="token-input-wrap">
@@ -297,16 +274,22 @@
             </div>
             <div class="form-hint">超过此金额，任务自动停止</div>
           </div>
+          <button class="btn btn-primary" id="saveConfigBtn">💾 保存全局设置</button>
+          <div class="config-success" id="configSuccess" style="display:none">✅ 配置已保存</div>
+        </div>
 
-          <button class="btn btn-primary" id="saveConfigBtn">
-            💾 保存配置
-          </button>
-
-          <div class="config-success" id="configSuccess" style="display:none">
-            ✅ 配置已保存
+        <!-- Provider 卡片网格 -->
+        <div class="card glass">
+          <div class="card-header">
+            <h2 class="card-title">🔌 API Provider</h2>
+            <div class="config-hint-inline">当前激活：<strong id="activeProviderLabel">—</strong></div>
+          </div>
+          <div class="provider-grid" id="providerGrid">
+            <!-- 由 JS 动态渲染 -->
           </div>
         </div>
       </section>
+
 
     </main>
   </div>

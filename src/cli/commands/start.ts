@@ -6,7 +6,7 @@
 import { select, input, confirm } from '@inquirer/prompts';
 import { logger } from '../../utils/logger.js';
 import { loadConfig, validateConfig } from '../../config/schema.js';
-import { OpenAIProvider } from '../../providers/openai.js';
+import { ProviderFactory } from '../../providers/factory.js';
 import { TurboStrategy } from '../../strategies/turbo.js';
 import { NaturalStrategy } from '../../strategies/natural.js';
 import { selectModel } from '../../core/model-selector.js';
@@ -79,7 +79,7 @@ async function runStart(opts: {
     }
 
     // 2. 创建 Provider
-    const provider = new OpenAIProvider(config.apiKey, config.baseUrl);
+    const provider = ProviderFactory.create(config);
 
     // 3. 选择策略
     let strategyName = opts.strategy;

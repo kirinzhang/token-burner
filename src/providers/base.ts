@@ -11,6 +11,8 @@ export interface ModelInfo {
         input: number;  // $/1M tokens
         output: number; // $/1M tokens
     };
+    /** 所属供应商（OpenAI / Anthropic / Google 等），用于 UI 分组 */
+    provider?: string;
 }
 
 export interface PromptPayload {

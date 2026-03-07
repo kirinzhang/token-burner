@@ -124,7 +124,7 @@ function showConfig(): void {
 
     console.log('');
     logger.info('⚙️  当前配置:');
-    logger.info(`   Provider:     ${logger.highlight(config.provider)}`);
+    logger.info(`   Provider:     ${logger.highlight(config.activeProvider)}`);
     logger.info(`   API Key:      ${maskedKey}`);
     logger.info(`   Base URL:     ${config.baseUrl}`);
     logger.info(`   默认模型:     ${config.defaultModel}`);

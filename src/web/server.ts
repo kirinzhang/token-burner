@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { configRouter } from './routes/config.js';
 import { taskRouter } from './routes/task.js';
 import { modelsRouter } from './routes/models.js';
+import { oauthRouter } from './routes/oauth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
@@ -27,6 +28,7 @@ app.use('/api/config', configRouter);
 app.use('/api/task', taskRouter);
 app.use('/api/tasks', taskRouter);   // 别名，兼容前端 /api/tasks 历史列表请求
 app.use('/api/models', modelsRouter);
+app.use('/api/oauth', oauthRouter);
 
 // 全局错误处理
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

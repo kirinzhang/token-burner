@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import type { Response } from 'express';
 import { loadConfig, validateConfig } from '../../config/schema.js';
-import { OpenAIProvider } from '../../providers/openai.js';
+import { ProviderFactory } from '../../providers/factory.js';
 import { TurboStrategy } from '../../strategies/turbo.js';
 import { NaturalStrategy } from '../../strategies/natural.js';
 import { BurnEngine } from '../../core/engine.js';
@@ -94,7 +94,7 @@ taskRouter.post('/start', async (req, res) => {
         return;
     }
 
-    const provider = new OpenAIProvider(config.apiKey, config.baseUrl);
+    const provider = ProviderFactory.create(config);
     const stratInstance = getStrategy(strategy);
 
     // 创建任务记录

@@ -14,6 +14,7 @@ let elapsedTimer = null;
 
 // ===================== 初始化 =====================
 document.addEventListener('DOMContentLoaded', async () => {
+    initOAuth();    // 检测 OpenRouter OAuth 回调
     initTabs();
     initStrategyCards();
     initTokenPresets();
@@ -187,14 +188,23 @@ async function loadConfig() {
     try {
         const res = await fetch(`${API}/config`);
         const conf = await res.json();
-        document.getElementById('cfgApiKey').placeholder = conf.apiKeyConfigured
-            ? conf.apiKey  // 已脱敏的 key
-            : 'sk-xxxxxxxx...（未配置）';
-        document.getElementById('cfgBaseUrl').value = conf.baseUrl || '';
-        document.getElementById('cfgCostLimit').value = conf.costLimitUsd || 10;
-
-        if (conf.apiKeySource === 'env') {
-            document.getElementById('cfgApiKeyBadge').style.display = '';
+        // 全局设置
+        const costLimit = document.getElementById('cfgCostLimit');
+        if (costLimit) costLimit.value = conf.costLimitUsd || 10;
+        // 渲染 Provider 卡片网格
+        await renderProviderGrid(conf);
+        // 更新 API 状态标志
+        const dot = document.getElementById('apiStatus');
+        const label = document.getElementById('apiStatusLabel');
+        const hasAnyKey = conf.providers && Object.values(conf.providers).some(p => p.configured);
+        if (dot && label) {
+            if (hasAnyKey) {
+                dot.className = 'status-dot ok';
+                label.textContent = `已就绪 (${conf.activeProvider || 'openai'})`;
+            } else {
+                dot.className = 'status-dot err';
+                label.textContent = '未配置 API Key';
+            }
         }
     } catch (e) {
         console.error('加载配置失败', e);
@@ -536,4 +546,196 @@ function escHtml(str) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+// ===================== PROVIDER 卡片网格 =====================
+
+/** 从后端拉取所有 Provider 元数据 */
+async function fetchProviderMeta() {
+    try {
+        const res = await fetch(`${API}/oauth/providers`);
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+/** 渲染 Provider 卡片网格 */
+async function renderProviderGrid(conf) {
+    const grid = document.getElementById('providerGrid');
+    if (!grid) return;
+
+    const meta = await fetchProviderMeta();
+    if (!meta) { grid.innerHTML = '<div style="color:var(--text-muted);padding:16px">加载 Provider 信息失败</div>'; return; }
+
+    const activeProvider = conf.activeProvider || 'openai';
+    const activeLabel = document.getElementById('activeProviderLabel');
+    const activeInfo = meta[activeProvider];
+    if (activeLabel && activeInfo) activeLabel.textContent = `${activeInfo.icon} ${activeInfo.label}`;
+
+    grid.innerHTML = Object.entries(meta).map(([pId, p]) => {
+        const pConf = conf.providers?.[pId] || { configured: false };
+        const isConnected = pConf.configured;
+        const isActive = pId === activeProvider;
+
+        const badge = isActive
+            ? `<span class="provider-badge active-label">✅ 激活中</span>`
+            : isConnected
+            ? `<span class="provider-badge connected">已配置</span>`
+            : '';
+
+        const fields = p.fields.map(f => `
+            <div class="provider-key-input">
+                <input type="${f.type || 'password'}"
+                    class="form-input provider-field"
+                    id="pf-${pId}-${f.key}"
+                    placeholder="${f.placeholder}"
+                    autocomplete="off"
+                    value="">
+            </div>
+        `).join('');
+
+        const oauthBtn = p.hasOAuth ? `
+            <button class="btn-oauth" onclick="startOpenRouterOAuth()">
+                🔑 一键 OAuth 授权
+            </button>
+        ` : '';
+
+        return `
+        <div class="provider-card ${isActive ? 'active' : ''} ${isConnected ? 'connected' : ''}" id="pcard-${pId}">
+            <div class="provider-card-header">
+                <span class="provider-icon">${p.icon}</span>
+                <div class="provider-info">
+                    <div class="provider-name">${p.label}</div>
+                    <div class="provider-desc">${p.description}</div>
+                </div>
+                ${badge}
+            </div>
+            <div class="provider-card-body">
+                ${fields}
+                <div class="provider-actions">
+                    ${oauthBtn}
+                    <button class="btn-use-provider ${isActive ? 'active-btn' : ''}"
+                        onclick="activateProvider('${pId}')">
+                        ${isActive ? '✓ 当前激活' : '设为激活'}
+                    </button>
+                    <a href="${p.keysPage}" target="_blank" class="provider-key-link">🔗 获取 Key</a>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+
+    // 显示已保存（脱敏）Key
+    Object.entries(conf.providers || {}).forEach(([pId, pConf]) => {
+        if (pConf.configured && pConf.apiKey) {
+            const el = document.getElementById(`pf-${pId}-apiKey`);
+            if (el) el.placeholder = pConf.apiKey;
+        }
+    });
+}
+
+/** 保存某个 Provider 的 Key */
+async function saveProviderKey(pId) {
+    const meta = await fetchProviderMeta();
+    if (!meta || !meta[pId]) return;
+
+    const data = { activeProvider: document.getElementById('activeProviderLabel') ? undefined : pId };
+    const fields = meta[pId].fields;
+    const providerData = {};
+    let hasValue = false;
+
+    fields.forEach(f => {
+        const el = document.getElementById(`pf-${pId}-${f.key}`);
+        if (el && el.value.trim() && !el.value.includes('...')) {
+            providerData[f.key] = el.value.trim();
+            hasValue = true;
+        }
+    });
+
+    if (!hasValue) return;
+    data[pId] = providerData;
+
+    await fetch(`${API}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+    });
+    showToast(`✅ ${meta[pId].label} Key 已保存`);
+    await loadConfig();
+    await loadModels();
+}
+
+/** 设置激活 Provider */
+async function activateProvider(pId) {
+    // 先保存当前 Key（如果有输入）
+    await saveProviderKey(pId);
+
+    await fetch(`${API}/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeProvider: pId }),
+    });
+    showToast('✅ Provider 已切换，重新加载模型列表...');
+    await loadConfig();
+    await loadModels();
+}
+
+// ===================== OpenRouter OAuth PKCE =====================
+
+function initOAuth() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    if (!code) return;
+
+    // 清除 URL 中的 code 参数
+    window.history.replaceState({}, '', window.location.pathname);
+    fetchOAuthCallback(code, state);
+}
+
+async function fetchOAuthCallback(code, state) {
+    try {
+        showToast('🔄 正在完成 OpenRouter 授权...');
+        const res = await fetch(`${API}/oauth/callback`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, state }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('🎉 OpenRouter 授权成功！');
+            // 自动切换到配置 Tab
+            document.querySelector('[data-tab="config"]')?.click();
+            await loadConfig();
+            await loadModels();
+        } else {
+            showToast(`❌ 授权失败：${data.error}`);
+        }
+    } catch (e) {
+        showToast('❌ 授权请求失败，请重试');
+    }
+}
+
+async function startOpenRouterOAuth() {
+    try {
+        const res = await fetch(`${API}/oauth/openrouter/start`);
+        const { authUrl } = await res.json();
+        window.location.href = authUrl;
+    } catch (e) {
+        showToast('❌ 获取授权链接失败');
+    }
+}
+
+function showToast(msg) {
+    let toast = document.getElementById('globalToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'globalToast';
+        toast.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1a1a2e;border:1px solid var(--border-accent);color:var(--text-primary);padding:12px 20px;border-radius:12px;font-size:0.85rem;z-index:9999;transition:opacity 0.3s;box-shadow:0 8px 32px rgba(0,0,0,0.4)';
+        document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    clearTimeout(toast._timer);
+    toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 3500);
 }
