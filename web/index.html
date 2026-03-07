@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Burner 🔥 Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <!-- 背景粒子效果 -->
+  <div class="bg-grid"></div>
+
+  <!-- 顶部导航 -->
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="brand-icon">🔥</span>
+      <span class="brand-name">Token Burner</span>
+      <span class="brand-version">v0.1.0</span>
+      <span class="brand-slogan">Burn tokens like a Pro</span>
+    </div>
+    <div class="nav-status">
+      <div class="status-dot" id="apiStatus"></div>
+      <span class="status-label" id="apiStatusLabel">检查中...</span>
+    </div>
+  </nav>
+
+  <div class="layout">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <nav class="side-nav">
+        <button class="nav-item active" data-tab="task" id="tab-task">
+          <span class="nav-icon">⚡</span>
+          <span>新任务</span>
+        </button>
+        <button class="nav-item" data-tab="history" id="tab-history">
+          <span class="nav-icon">📋</span>
+          <span>历史记录</span>
+        </button>
+        <button class="nav-item" data-tab="config" id="tab-config">
+          <span class="nav-icon">⚙️</span>
+          <span>配置</span>
+        </button>
+      </nav>
+
+      <!-- 统计卡片 -->
+      <div class="sidebar-stats">
+        <div class="stat-mini">
+          <span class="stat-mini-label">今日消耗</span>
+          <span class="stat-mini-value" id="statTodayTokens">—</span>
+        </div>
+        <div class="stat-mini">
+          <span class="stat-mini-label">累计费用</span>
+          <span class="stat-mini-value" id="statTotalCost">—</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 主内容 -->
+    <main class="main">
+
+      <!-- 新任务面板 -->
+      <section class="tab-panel active" id="panel-task">
+        <!-- 运行中的任务进度（初始隐藏） -->
+        <div class="running-task card glass" id="runningTask" style="display:none">
+          <div class="card-header">
+            <h2 class="card-title">
+              <span class="pulse-dot"></span>
+              任务进行中
+            </h2>
+            <button class="btn btn-danger btn-sm" id="abortBtn">⏹ 中止</button>
+          </div>
+
+          <!-- 进度环 -->
+          <div class="progress-ring-wrap">
+            <svg class="progress-ring" width="180" height="180" viewBox="0 0 180 180">
+              <circle class="ring-bg" cx="90" cy="90" r="76" />
+              <circle class="ring-fg" cx="90" cy="90" r="76" id="ringFg" stroke-dasharray="477.5"
+                stroke-dashoffset="477.5" />
+            </svg>
+            <div class="ring-content">
+              <div class="ring-pct" id="ringPct">0%</div>
+              <div class="ring-label">完成</div>
+            </div>
+          </div>
+
+          <!-- 实时指标 -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon">🔤</div>
+              <div class="metric-body">
+                <div class="metric-value" id="metricConsumed">0</div>
+                <div class="metric-label">已消耗 Token</div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">💰</div>
+              <div class="metric-body">
+                <div class="metric-value" id="metricCost">$0.0000</div>
+                <div class="metric-label">累计费用</div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">📡</div>
+              <div class="metric-body">
+                <div class="metric-value" id="metricCalls">0</div>
+                <div class="metric-label">API 调用</div>
+              </div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon">⏱</div>
+              <div class="metric-body">
+                <div class="metric-value" id="metricElapsed">0s</div>
+                <div class="metric-label">已用时间</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 任务配置表单 -->
+        <div class="card glass" id="taskForm">
+          <div class="card-header">
+            <h2 class="card-title">🚀 启动消耗任务</h2>
+          </div>
+
+          <!-- 策略选择 -->
+          <div class="form-section">
+            <label class="form-label">选择策略</label>
+            <div class="strategy-cards">
+              <label class="strategy-card selected" for="stratTurbo">
+                <input type="radio" id="stratTurbo" name="strategy" value="turbo" checked>
+                <div class="strategy-icon">🔥</div>
+                <div class="strategy-body">
+                  <div class="strategy-name">极速模式</div>
+                  <div class="strategy-desc">最大化消耗效率，密集调用大段 Prompt</div>
+                </div>
+                <div class="strategy-badge">高效率</div>
+              </label>
+              <label class="strategy-card" for="stratNatural">
+                <input type="radio" id="stratNatural" name="strategy" value="natural">
+                <div class="strategy-icon">📚</div>
+                <div class="strategy-body">
+                  <div class="strategy-name">自然模式</div>
+                  <div class="strategy-desc">模拟真实对话，高伪装度，随机主题切换</div>
+                </div>
+                <div class="strategy-badge">高伪装</div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 模型选择 -->
+          <div class="form-section">
+            <label class="form-label" for="modelSelect">选择模型</label>
+            <select class="form-select" id="modelSelect">
+              <option value="">加载中...</option>
+            </select>
+            <!-- 自定义模型切换 -->
+            <div class="custom-model-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" id="customModelToggle" class="toggle-input">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                <span class="toggle-text">自定义模型 ID（填入最新模型）</span>
+              </label>
+            </div>
+            <div id="customModelWrap" style="display:none;margin-top:10px">
+              <input type="text" class="form-input" id="customModelId"
+                placeholder="例：claude-3-7-sonnet-20250219 、 gemini-2.0-pro 、 deepseek/deepseek-r2">
+              <div class="form-hint">输入任意官方模型 ID，请确保与您的 API Base URL 匹配</div>
+            </div>
+            <div class="form-hint" id="modelPriceHint"></div>
+          </div>
+
+          <!-- Token 目标 -->
+          <div class="form-section">
+            <label class="form-label">目标 Token 数量</label>
+            <div class="token-presets">
+              <button class="preset-btn" data-value="1000">1K</button>
+              <button class="preset-btn active" data-value="10000">10K</button>
+              <button class="preset-btn" data-value="50000">50K</button>
+              <button class="preset-btn" data-value="100000">100K</button>
+              <button class="preset-btn" data-value="500000">500K</button>
+              <button class="preset-btn" data-value="1000000">1M</button>
+              <button class="preset-btn" data-value="5000000">5M</button>
+              <button class="preset-btn" data-value="10000000">10M</button>
+            </div>
+            <div class="token-input-wrap">
+              <input type="number" class="form-input" id="tokenTarget" value="10000" min="100" max="10000000"
+                step="1000">
+              <span class="input-suffix">tokens (max 10M)</span>
+            </div>
+          </div>
+
+          <!-- 预估信息 -->
+          <div class="estimate-box" id="estimateBox">
+            <div class="estimate-item">
+              <span class="estimate-icon">💰</span>
+              <span class="estimate-label">预估费用</span>
+              <span class="estimate-value" id="estCost">—</span>
+            </div>
+            <div class="estimate-item">
+              <span class="estimate-icon">⏱</span>
+              <span class="estimate-label">预估时间</span>
+              <span class="estimate-value" id="estTime">—</span>
+            </div>
+            <div class="estimate-item">
+              <span class="estimate-icon">📡</span>
+              <span class="estimate-label">预估次数</span>
+              <span class="estimate-value" id="estCalls">—</span>
+            </div>
+          </div>
+          <!-- 伪装延迟提示（自然模式时显示） -->
+          <div id="delayHint" class="form-hint" style="display:none;color:var(--warning);margin-bottom:14px"></div>
+
+          <!-- Dry Run 选项 -->
+          <div class="form-section">
+            <label class="toggle-label">
+              <input type="checkbox" id="dryRunToggle" class="toggle-input">
+              <span class="toggle-track">
+                <span class="toggle-thumb"></span>
+              </span>
+              <span class="toggle-text">Dry-Run 模式（不实际调用 API）</span>
+            </label>
+          </div>
+
+          <!-- 启动按钮 -->
+          <button class="btn btn-primary btn-lg" id="startBtn">
+            <span class="btn-icon">🔥</span>
+            <span>just burn it</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 历史记录面板 -->
+      <section class="tab-panel" id="panel-history">
+        <div class="card glass">
+          <div class="card-header">
+            <h2 class="card-title">📋 任务历史</h2>
+            <button class="btn btn-ghost btn-sm" id="refreshHistory">🔄 刷新</button>
+          </div>
+          <div id="historyList" class="history-list">
+            <div class="empty-state">
+              <div class="empty-icon">📭</div>
+              <div class="empty-text">暂无任务记录</div>
+            </div>
+          </div>
+        </div>
+        <!-- 调用详情展开抽屉 -->
+        <div class="card glass log-drawer" id="logDrawer" style="display:none">
+          <div class="card-header">
+            <h2 class="card-title" id="logDrawerTitle">💬 API 调用记录</h2>
+            <button class="btn btn-ghost btn-sm" id="closeDrawer">✕ 关闭</button>
+          </div>
+          <div id="logList" class="log-list"></div>
+        </div>
+      </section>
+
+      <!-- 配置面板 -->
+      <section class="tab-panel" id="panel-config">
+        <div class="card glass">
+          <div class="card-header">
+            <h2 class="card-title">⚙️ 配置管理</h2>
+          </div>
+
+          <div class="config-hint">
+            <div class="hint-icon">📄</div>
+            <div class="hint-body">
+              <strong>推荐使用 .env 文件配置</strong><br>
+              在项目根目录创建 <code>.env</code> 文件，参考 <code>.env.example</code>。
+              这里保存的配置会作为备选值（.env 优先级更高）。
+            </div>
+          </div>
+
+          <div class="form-section">
+            <label class="form-label" for="cfgApiKey">API Key</label>
+            <div class="input-with-badge">
+              <input type="password" class="form-input" id="cfgApiKey" placeholder="sk-xxxxxxxx...">
+              <span class="env-badge" id="cfgApiKeyBadge" style="display:none">📄 来自 .env</span>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <label class="form-label" for="cfgBaseUrl">API Base URL</label>
+            <input type="url" class="form-input" id="cfgBaseUrl" placeholder="https://api.openai.com/v1">
+            <div class="form-hint">自定义代理或第三方兼容接口时修改此项</div>
+          </div>
+
+          <div class="form-section">
+            <label class="form-label" for="cfgCostLimit">费用上限（USD）</label>
+            <div class="token-input-wrap">
+              <input type="number" class="form-input" id="cfgCostLimit" value="10" min="0.1" step="0.5">
+              <span class="input-suffix">USD</span>
+            </div>
+            <div class="form-hint">超过此金额，任务自动停止</div>
+          </div>
+
+          <button class="btn btn-primary" id="saveConfigBtn">
+            💾 保存配置
+          </button>
+
+          <div class="config-success" id="configSuccess" style="display:none">
+            ✅ 配置已保存
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

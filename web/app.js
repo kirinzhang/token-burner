@@ -1,0 +1,539 @@
+/**
+ * Token Burner Dashboard — 前端逻辑
+ * 负责 API 调用、SSE 进度订阅、界面交互
+ */
+
+const API = 'http://localhost:3000/api';
+
+// ===================== 状态 =====================
+let currentTaskId = null;
+let currentSse = null;
+let models = [];
+let runningStartTime = null;
+let elapsedTimer = null;
+
+// ===================== 初始化 =====================
+document.addEventListener('DOMContentLoaded', async () => {
+    initTabs();
+    initStrategyCards();
+    initTokenPresets();
+    initCustomModelToggle();
+    await Promise.all([
+        loadConfig(),
+        loadModels(),
+        loadHistory(),
+        checkApiStatus(),
+    ]);
+    setupEstimateListeners();
+    setupButtons();
+});
+
+// ===================== 标签页切换 =====================
+function initTabs() {
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(`panel-${tab}`).classList.add('active');
+            if (tab === 'history') loadHistory();
+        });
+    });
+}
+
+// ===================== 策略卡片 =====================
+function initStrategyCards() {
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.strategy-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            const radio = card.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+            updateEstimate();
+        });
+    });
+}
+
+// ===================== Token 预设 =====================
+function initTokenPresets() {
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tokenTarget').value = btn.dataset.value;
+            updateEstimate();
+        });
+    });
+
+    document.getElementById('tokenTarget').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        document.querySelectorAll('.preset-btn').forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.value) === val);
+        });
+        updateEstimate();
+    });
+}
+
+// ===================== 加载模型列表 =====================
+async function loadModels() {
+    try {
+        const res = await fetch(`${API}/models`);
+        models = await res.json();
+        const sel = document.getElementById('modelSelect');
+
+        // 按 provider 分组
+        const grouped = {};
+        for (const m of models) {
+            if (!grouped[m.provider]) grouped[m.provider] = [];
+            grouped[m.provider].push(m);
+        }
+
+        const providerIcons = {
+            OpenAI: '🤖', Anthropic: '🔮', Google: '🌐',
+            Meta: '🦙', Mistral: '🌬️', DeepSeek: '🐋',
+            Qwen: '☁️', Cohere: '🪐',
+        };
+
+        sel.innerHTML = Object.entries(grouped).map(([provider, ms]) => {
+            const icon = providerIcons[provider] || '🔧';
+            const options = ms.map(m =>
+                `<option value="${m.id}">${m.name}  ·  $${m.pricing.input}/$${m.pricing.output} per 1M</option>`
+            ).join('');
+            return `<optgroup label="${icon} ${provider}">${options}</optgroup>`;
+        }).join('');
+
+        sel.addEventListener('change', updateEstimate);
+        updateModelHint();
+        updateEstimate();
+    } catch (e) {
+        console.error('加载模型失败', e);
+    }
+}
+
+function updateModelHint() {
+    const sel = document.getElementById('modelSelect');
+    const model = models.find(m => m.id === sel.value);
+    const hint = document.getElementById('modelPriceHint');
+    if (model) {
+        hint.textContent = `输入: $${model.pricing.input}/1M tokens · 输出: $${model.pricing.output}/1M tokens`;
+    }
+}
+
+// ===================== 费用预估 =====================
+async function updateEstimate() {
+    updateModelHint();
+    const target = parseInt(document.getElementById('tokenTarget').value, 10);
+    const model = getSelectedModel() || document.getElementById('modelSelect').value;
+    const strategy = document.querySelector('input[name="strategy"]:checked')?.value || 'turbo';
+
+    if (!target || !model) return;
+
+    try {
+        const res = await fetch(`${API}/task/estimate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetTokens: target, model, strategy }),
+        });
+        const est = await res.json();
+        document.getElementById('estCost').textContent = est.estimatedCostFormatted || '—';
+        // 时间只显示纯 API 调用时间
+        document.getElementById('estTime').textContent = est.estimatedTimeFormatted
+            ? `${est.estimatedTimeFormatted} (纯API)`
+            : '—';
+        document.getElementById('estCalls').textContent = est.estimatedCalls != null ? `${est.estimatedCalls} 次` : '—';
+
+        // 自然模式：显示伪装延迟提示
+        const delayHint = document.getElementById('delayHint');
+        if (delayHint) {
+            if (est.camouflageDelayMs > 0) {
+                delayHint.textContent = '⚠️ 自然模式含 30s~5min/次伪装延迟，实际运行时间远大于以上预估';
+                delayHint.style.display = '';
+            } else {
+                delayHint.style.display = 'none';
+            }
+        }
+    } catch {
+        document.getElementById('estCost').textContent = '—';
+    }
+}
+
+function setupEstimateListeners() {
+    document.getElementById('modelSelect').addEventListener('change', updateEstimate);
+}
+
+// ===================== API 状态检查 =====================
+async function checkApiStatus() {
+    const dot = document.getElementById('apiStatus');
+    const label = document.getElementById('apiStatusLabel');
+    try {
+        const res = await fetch(`${API}/config`);
+        const conf = await res.json();
+        if (conf.apiKeyConfigured) {
+            dot.className = 'status-dot ok';
+            label.textContent = `已就绪 (${conf.apiKeySource === 'env' ? '.env' : '配置文件'})`;
+        } else {
+            dot.className = 'status-dot err';
+            label.textContent = '未配置 API Key';
+        }
+    } catch {
+        dot.className = 'status-dot err';
+        label.textContent = '服务器未响应';
+    }
+}
+
+// ===================== 加载配置 =====================
+async function loadConfig() {
+    try {
+        const res = await fetch(`${API}/config`);
+        const conf = await res.json();
+        document.getElementById('cfgApiKey').placeholder = conf.apiKeyConfigured
+            ? conf.apiKey  // 已脱敏的 key
+            : 'sk-xxxxxxxx...（未配置）';
+        document.getElementById('cfgBaseUrl').value = conf.baseUrl || '';
+        document.getElementById('cfgCostLimit').value = conf.costLimitUsd || 10;
+
+        if (conf.apiKeySource === 'env') {
+            document.getElementById('cfgApiKeyBadge').style.display = '';
+        }
+    } catch (e) {
+        console.error('加载配置失败', e);
+    }
+}
+
+// ===================== 加载历史 =====================
+async function loadHistory() {
+    try {
+        const res = await fetch(`${API}/tasks`);
+        const tasks = await res.json();
+        renderHistory(tasks);
+        updateSidebarStats(tasks);
+    } catch (e) {
+        console.error('加载历史失败', e);
+    }
+}
+
+function renderHistory(tasks) {
+    const list = document.getElementById('historyList');
+    if (!tasks || tasks.length === 0) {
+        list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <div class="empty-text">暂无任务记录，启动一个任务吧</div>
+      </div>`;
+        return;
+    }
+
+    list.innerHTML = tasks.map(t => {
+        const pct = Math.min(100, ((t.consumedTokens / t.targetTokens) * 100)).toFixed(1);
+        const date = new Date(t.startedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        const icons = { turbo: '🔥', natural: '📚' };
+        const icon = icons[t.strategy] || '📋';
+        const statusClass = `status-${t.status}`;
+        return `
+      <div class="history-item" onclick="openLogDrawer('${t.id}', '${icon} #${t.id} ${t.model}')">
+        <div class="history-status ${statusClass}"></div>
+        <div class="history-info">
+          <div class="history-title">${icon} ${t.strategy} · ${t.model}${t.dryRun ? ' · <em>dry-run</em>' : ''}</div>
+          <div class="history-meta">${date} · #${t.id} · ${t.totalCalls} 次调用</div>
+        </div>
+        <div class="history-tokens">${fmtTokens(t.consumedTokens)} / ${fmtTokens(t.targetTokens)}<br><small style="color:#4a5568">${pct}%</small></div>
+        <div class="history-cost">${fmtCost(t.totalCostUsd)}</div>
+        <button class="btn-detail" onclick="event.stopPropagation();openLogDrawer('${t.id}', '${icon} #${t.id} ${t.strategy} · ${t.model}')">💬 详情</button>
+      </div>`;
+    }).join('');
+}
+
+function updateSidebarStats(tasks) {
+    const today = new Date().toDateString();
+    const todayTasks = tasks.filter(t => new Date(t.startedAt).toDateString() === today);
+    const todayTokens = todayTasks.reduce((s, t) => s + t.consumedTokens, 0);
+    const totalCost = tasks.reduce((s, t) => s + t.totalCostUsd, 0);
+
+    document.getElementById('statTodayTokens').textContent = fmtTokens(todayTokens);
+    document.getElementById('statTotalCost').textContent = fmtCost(totalCost);
+}
+
+// ===================== 按钮事件 =====================
+function setupButtons() {
+    document.getElementById('startBtn').addEventListener('click', startTask);
+    document.getElementById('abortBtn').addEventListener('click', abortTask);
+    document.getElementById('refreshHistory').addEventListener('click', loadHistory);
+    document.getElementById('saveConfigBtn').addEventListener('click', saveConfig);
+    document.getElementById('closeDrawer').addEventListener('click', () => {
+        document.getElementById('logDrawer').style.display = 'none';
+    });
+}
+
+// ===================== 自定义模型 Toggle =====================
+function initCustomModelToggle() {
+    const toggle = document.getElementById('customModelToggle');
+    const wrap = document.getElementById('customModelWrap');
+    const sel = document.getElementById('modelSelect');
+    if (!toggle || !wrap) return;
+    toggle.addEventListener('change', () => {
+        const on = toggle.checked;
+        wrap.style.display = on ? '' : 'none';
+        sel.disabled = on;
+        sel.style.opacity = on ? '0.35' : '';
+        updateEstimate();
+    });
+    document.getElementById('customModelId').addEventListener('input', updateEstimate);
+}
+
+// 获取当前选中的模型 ID
+function getSelectedModel() {
+    const toggle = document.getElementById('customModelToggle');
+    if (toggle && toggle.checked) {
+        const custom = document.getElementById('customModelId').value.trim();
+        if (custom) return custom;
+    }
+    return document.getElementById('modelSelect').value;
+}
+
+// ===================== 启动任务 =====================
+async function startTask() {
+    const target = parseInt(document.getElementById('tokenTarget').value, 10);
+    const model = getSelectedModel();
+    const strategy = document.querySelector('input[name="strategy"]:checked')?.value || 'turbo';
+    const dryRun = document.getElementById('dryRunToggle').checked;
+
+    if (!target || !model) {
+        alert('请选择模型并设置目标 Token 数量');
+        return;
+    }
+
+    const btn = document.getElementById('startBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-icon">⏳</span><span>启动中...</span>';
+
+    try {
+        const res = await fetch(`${API}/task/start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ targetTokens: target, model, strategy, dryRun }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || '启动失败');
+
+        currentTaskId = data.taskId;
+        runningStartTime = Date.now();
+        showRunningPanel(target);
+        subscribeToProgress(currentTaskId, target);
+    } catch (e) {
+        alert(`启动失败: ${e.message}`);
+        btn.disabled = false;
+        btn.innerHTML = '<span class="btn-icon">🔥</span><span>开始消耗</span>';
+    }
+}
+
+function showRunningPanel(target) {
+    document.getElementById('taskForm').style.display = 'none';
+    document.getElementById('runningTask').style.display = '';
+    updateRing(0, target);
+
+    // 启动 elapsed 计时器
+    elapsedTimer = setInterval(() => {
+        const secs = Math.floor((Date.now() - runningStartTime) / 1000);
+        document.getElementById('metricElapsed').textContent = fmtElapsed(secs * 1000);
+    }, 1000);
+}
+
+// ===================== SSE 进度订阅 =====================
+function subscribeToProgress(taskId, target) {
+    if (currentSse) currentSse.close();
+    currentSse = new EventSource(`${API}/task/stream/${taskId}`);
+
+    currentSse.addEventListener('progress', e => {
+        const d = JSON.parse(e.data);
+        updateRing(d.consumedTokens, d.targetTokens ?? target);
+        document.getElementById('metricConsumed').textContent = fmtTokens(d.consumedTokens);
+        document.getElementById('metricCost').textContent = fmtCost(d.totalCostUsd);
+        document.getElementById('metricCalls').textContent = d.totalCalls;
+        document.getElementById('metricElapsed').textContent = fmtElapsed(d.elapsedMs);
+    });
+
+    currentSse.addEventListener('done', e => {
+        const d = JSON.parse(e.data);
+        onTaskDone(d);
+    });
+
+    currentSse.addEventListener('error', e => {
+        try {
+            const d = JSON.parse(e.data);
+            alert(`任务出错: ${d.message}`);
+        } catch { }
+        resetToForm();
+    });
+}
+
+function onTaskDone(result) {
+    clearInterval(elapsedTimer);
+    currentSse?.close();
+    updateRing(result.totalTokens, result.totalTokens);
+    document.getElementById('metricConsumed').textContent = fmtTokens(result.totalTokens);
+    document.getElementById('metricCost').textContent = fmtCost(result.totalCostUsd);
+
+    setTimeout(() => {
+        alert(`✅ 任务完成！\n消耗 Token: ${fmtTokens(result.totalTokens)}\n总费用: ${fmtCost(result.totalCostUsd)}`);
+        resetToForm();
+        loadHistory();
+        switchTab('history');
+    }, 800);
+}
+
+function updateRing(consumed, target) {
+    const pct = Math.min(100, (consumed / target) * 100);
+    const circumference = 2 * Math.PI * 76; // r=76
+    const offset = circumference * (1 - pct / 100);
+    const ring = document.getElementById('ringFg');
+    if (ring) ring.style.strokeDashoffset = offset;
+    document.getElementById('ringPct').textContent = `${pct.toFixed(1)}%`;
+}
+
+// ===================== 中止任务 =====================
+async function abortTask() {
+    if (!currentTaskId) return;
+    if (!confirm('确认中止当前任务？')) return;
+    try {
+        await fetch(`${API}/task/${currentTaskId}`, { method: 'DELETE' });
+    } catch { }
+    clearInterval(elapsedTimer);
+    currentSse?.close();
+    resetToForm();
+    loadHistory();
+}
+
+function resetToForm() {
+    clearInterval(elapsedTimer);
+    const btn = document.getElementById('startBtn');
+    btn.disabled = false;
+    btn.innerHTML = '<span class="btn-icon">🔥</span><span>开始消耗</span>';
+    document.getElementById('taskForm').style.display = '';
+    document.getElementById('runningTask').style.display = 'none';
+    currentTaskId = null;
+    currentSse = null;
+}
+
+// ===================== 保存配置 =====================
+async function saveConfig() {
+    const apiKey = document.getElementById('cfgApiKey').value;
+    const baseUrl = document.getElementById('cfgBaseUrl').value;
+    const costLimitUsd = parseFloat(document.getElementById('cfgCostLimit').value);
+
+    try {
+        const res = await fetch(`${API}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey, baseUrl, costLimitUsd }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        const successEl = document.getElementById('configSuccess');
+        successEl.style.display = '';
+        setTimeout(() => successEl.style.display = 'none', 3000);
+        checkApiStatus();
+    } catch (e) {
+        alert(`保存失败: ${e.message}`);
+    }
+}
+
+// ===================== 工具函数 =====================
+function fmtTokens(n) {
+    if (!n && n !== 0) return '—';
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return String(n);
+}
+
+function fmtCost(usd) {
+    if (!usd && usd !== 0) return '—';
+    if (usd < 0.01) return `$${usd.toFixed(6)}`;
+    if (usd < 1) return `$${usd.toFixed(4)}`;
+    return `$${usd.toFixed(2)}`;
+}
+
+function fmtElapsed(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+function switchTab(tab) {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === `panel-${tab}`));
+}
+
+// ===================== 历史调用详情 =====================
+async function openLogDrawer(taskId, title) {
+    const drawer = document.getElementById('logDrawer');
+    const logList = document.getElementById('logList');
+    const drawerTitle = document.getElementById('logDrawerTitle');
+
+    drawerTitle.textContent = `💬 调用记录 — ${title}`;
+    logList.innerHTML = '<div class="log-empty">加载中...</div>';
+    drawer.style.display = '';
+
+    // 滚动到详情区域
+    drawer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    try {
+        const res = await fetch(`${API}/task/logs/${taskId}`);
+        const logs = await res.json();
+        renderLogs(logs);
+    } catch (e) {
+        logList.innerHTML = `<div class="log-empty">加载失败: ${e.message}</div>`;
+    }
+}
+
+function renderLogs(logs) {
+    const logList = document.getElementById('logList');
+
+    if (!logs || logs.length === 0) {
+        logList.innerHTML = `
+          <div class="log-empty">
+            📭 暂无调用记录<br>
+            <small style="color:#4a5568;margin-top:6px;display:block">仅真实 API 调用（非 dry-run）会记录对话内容</small>
+          </div>`;
+        return;
+    }
+
+    logList.innerHTML = logs.map((log, idx) => {
+        const userContent = log.promptPreview || '（无 Prompt 记录）';
+        const aiContent = log.responsePreview || '（无响应记录）';
+        const durationSec = (log.durationMs / 1000).toFixed(2);
+        return `
+        <div class="log-item">
+          <div class="log-item-header">
+            <span class="log-call-num">#${idx + 1}</span>
+            <span class="log-tokens">⬆️ ${log.inputTokens} | ⬇️ ${log.outputTokens} tokens</span>
+            <span class="log-cost">${fmtCost(log.costUsd)}</span>
+            <span class="log-duration">⏱ ${durationSec}s</span>
+            ${log.createdAt ? `<span>${new Date(log.createdAt).toLocaleTimeString('zh-CN')}</span>` : ''}
+          </div>
+          <div class="chat-bubble">
+            <div class="bubble-user">
+              <div class="bubble-avatar">👤</div>
+              <div class="bubble-content">${escHtml(userContent)}</div>
+            </div>
+          </div>
+          <div class="chat-bubble">
+            <div class="bubble-ai">
+              <div class="bubble-avatar">🤖</div>
+              <div class="bubble-content">${escHtml(aiContent)}</div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
