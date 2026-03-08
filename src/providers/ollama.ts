@@ -28,10 +28,13 @@ export class OllamaProvider extends BaseOpenAICompatibleProvider {
     }
 
     override async listModels(): Promise<ModelInfo[]> {
-        // 优先从本地 Ollama 动态拉取
+        // 优先从本地 Ollama 动态拉取（1.5s 超时）
         try {
             const tagsUrl = this.ollamaBaseUrl.replace('/v1', '') + '/api/tags';
-            const res = await fetch(tagsUrl, { signal: AbortSignal.timeout(3000) });
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 1500);
+            const res = await fetch(tagsUrl, { signal: controller.signal });
+            clearTimeout(timer);
             if (res.ok) {
                 const data = await res.json() as { models?: { name: string }[] };
                 if (data.models && data.models.length > 0) {

@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const MINIMAX_MODELS: ModelInfo[] = [
+export const MINIMAX_MODELS: ModelInfo[] = [
     { id: 'MiniMax-Text-01', name: 'MiniMax Text-01', maxTokens: 245760, pricing: { input: 0.20, output: 1.10 }, provider: 'MiniMax' },
     { id: 'abab6.5s-chat', name: 'ABAB 6.5s Chat', maxTokens: 8192, pricing: { input: 0.10, output: 0.10 }, provider: 'MiniMax' },
     { id: 'abab6.5-chat', name: 'ABAB 6.5 Chat', maxTokens: 8192, pricing: { input: 0.20, output: 0.20 }, provider: 'MiniMax' },

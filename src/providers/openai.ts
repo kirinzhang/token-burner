@@ -77,7 +77,7 @@ export abstract class BaseOpenAICompatibleProvider implements AIProvider {
 
 // ===================== OpenAI 直连实现 =====================
 
-const OPENAI_MODELS: ModelInfo[] = [
+export const OPENAI_MODELS: ModelInfo[] = [
     { id: 'gpt-4o', name: 'GPT-4o', maxTokens: 16384, pricing: { input: 2.50, output: 10.00 } },
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini', maxTokens: 16384, pricing: { input: 0.15, output: 0.60 } },
     { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', maxTokens: 4096, pricing: { input: 10.00, output: 30.00 } },

@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const XAI_MODELS: ModelInfo[] = [
+export const XAI_MODELS: ModelInfo[] = [
     { id: 'grok-3', name: 'Grok 3', maxTokens: 131072, pricing: { input: 3.0, output: 15.0 }, provider: 'xai' },
     { id: 'grok-3-mini', name: 'Grok 3 Mini', maxTokens: 131072, pricing: { input: 0.3, output: 0.5 }, provider: 'xai' },
     { id: 'grok-3-fast', name: 'Grok 3 Fast', maxTokens: 131072, pricing: { input: 5.0, output: 25.0 }, provider: 'xai' },

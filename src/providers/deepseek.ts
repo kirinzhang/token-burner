@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const DEEPSEEK_MODELS: ModelInfo[] = [
+export const DEEPSEEK_MODELS: ModelInfo[] = [
     { id: 'deepseek-reasoner', name: 'DeepSeek R1', maxTokens: 8192, pricing: { input: 0.55, output: 2.19 }, provider: 'DeepSeek' },
     { id: 'deepseek-chat', name: 'DeepSeek V3', maxTokens: 65536, pricing: { input: 0.27, output: 1.10 }, provider: 'DeepSeek' },
 ];

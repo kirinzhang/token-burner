@@ -7,7 +7,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const CEREBRAS_MODELS: ModelInfo[] = [
+export const CEREBRAS_MODELS: ModelInfo[] = [
     { id: 'llama-3.3-70b', name: 'Llama 3.3 70B', maxTokens: 131072, pricing: { input: 0.59, output: 0.99 }, provider: 'cerebras' },
     { id: 'llama-3.1-8b', name: 'Llama 3.1 8B', maxTokens: 131072, pricing: { input: 0.1, output: 0.1 }, provider: 'cerebras' },
     { id: 'llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B', maxTokens: 131072, pricing: { input: 0.27, output: 0.85 }, provider: 'cerebras' },

@@ -7,7 +7,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const HF_MODELS: ModelInfo[] = [
+export const HF_MODELS: ModelInfo[] = [
     { id: 'deepseek-ai/DeepSeek-R1', name: 'DeepSeek R1（HF）', maxTokens: 163840, pricing: { input: 1.0, output: 3.0 }, provider: 'huggingface' },
     { id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3（HF）', maxTokens: 163840, pricing: { input: 0.27, output: 0.27 }, provider: 'huggingface' },
     { id: 'meta-llama/Llama-3.3-70B-Instruct', name: 'Llama 3.3 70B（HF）', maxTokens: 128000, pricing: { input: 0.5, output: 0.77 }, provider: 'huggingface' },

@@ -7,7 +7,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const MOONSHOT_MODELS: ModelInfo[] = [
+export const MOONSHOT_MODELS: ModelInfo[] = [
     { id: 'kimi-k2-0905-preview', name: 'Kimi K2', maxTokens: 131072, pricing: { input: 0.60, output: 2.50 }, provider: 'moonshot' },
     { id: 'kimi-k2-turbo-preview', name: 'Kimi K2 Turbo', maxTokens: 131072, pricing: { input: 0.30, output: 1.50 }, provider: 'moonshot' },
     { id: 'moonshot-v1-128k', name: 'Moonshot v1 128K', maxTokens: 131072, pricing: { input: 0.20, output: 0.20 }, provider: 'moonshot' },

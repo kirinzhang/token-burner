@@ -1,87 +1,45 @@
 /**
  * API 路由 — 模型列表（provider/model 格式）
- * 返回 {id: "openai/gpt-4o", name: "GPT-4o", provider: "openai", ...} 格式
+ * 直接从 all-models-data.ts 读取静态数据，零网络请求，瞬时返回。
+ * 前端下拉始终显示全部 15 个 Provider 的所有模型。
  */
 
 import { Router } from 'express';
 import { loadConfig } from '../../config/schema.js';
-import { ProviderFactory, BUILTIN_PROVIDER_META } from '../../providers/factory.js';
+import { ProviderFactory } from '../../providers/factory.js';
+import { ALL_MODELS } from '../../providers/all-models-data.js';
 
 export const modelsRouter = Router();
 
-/**
- * GET /api/models — 返回按 provider 分组的完整模型列表（含 custom providers）
- */
 modelsRouter.get('/', async (_req, res) => {
     try {
         const config = loadConfig();
-        const allModels: Array<{
-            id: string;
-            name: string;
-            provider: string;
-            pricing: { input: number; output: number };
-            priceDesc: string;
-        }> = [];
 
-        // 1. 当前激活的 provider 先拉（如果 OpenRouter this can be 800+ models）
-        try {
-            const activeProvider = ProviderFactory.create(config);
-            const activeModels = await activeProvider.listModels();
-            for (const m of activeModels) {
-                // 格式化为 provider/model
-                const providerPrefix = m.provider ?? config.activeProvider;
-                const modelId = m.id.includes('/') ? m.id : `${providerPrefix}/${m.id}`;
-                allModels.push({
-                    id: modelId,
-                    name: m.name,
-                    provider: providerPrefix,
-                    pricing: { input: m.pricing.input, output: m.pricing.output },
-                    priceDesc: `$${m.pricing.input}/$${m.pricing.output} per 1M`,
-                });
-            }
-        } catch (e) {
-            // 激活 provider 无 key 时忽略
-        }
+        // ── 1. 所有 built-in providers 静态模型（零网络请求，瞬时返回）────────────
+        const seen = new Set<string>(ALL_MODELS.map(m => m.id));
+        const allModels = ALL_MODELS.map(m => ({
+            id: m.id,
+            name: m.name,
+            provider: m.provider,
+            pricing: { input: m.input, output: m.output },
+            priceDesc: `$${m.input}/$${m.output} per 1M`,
+        }));
 
-        // 2. 其他 built-in providers 的静态模型列表也加进来（已配置 key 的）
-        const builtins = ProviderFactory.builtinIds();
-        for (const bid of builtins) {
-            if (bid === (config.activeProvider as string)) continue; // 已处理
-            const key = (config[bid as keyof typeof config] as { apiKey?: string } | undefined)?.apiKey;
-            if (!key) continue; // 没 key 的不拉
-            try {
-                const p = ProviderFactory.create({ ...config, activeProvider: bid });
-                const ms = await p.listModels();
-                for (const m of ms) {
-                    const modelId = m.id.includes('/') ? m.id : `${bid}/${m.id}`;
-                    if (!allModels.find(x => x.id === modelId)) {
-                        allModels.push({
-                            id: modelId,
-                            name: m.name,
-                            provider: bid,
-                            pricing: { input: m.pricing.input, output: m.pricing.output },
-                            priceDesc: `$${m.pricing.input}/$${m.pricing.output} per 1M`,
-                        });
-                    }
-                }
-            } catch {
-                // 忽略
-            }
-        }
-
-        // 3. Custom providers 的模型
+        // ── 2. Custom providers 模型（仅已配置的，动态拉取）──────────────────────
         for (const cp of config.customProviders ?? []) {
-            if (cp.id === config.activeProvider) continue; // 已处理
+            if (!cp.apiKey && !cp.baseUrl) continue;
             try {
                 const p = ProviderFactory.create({ ...config, activeProvider: cp.id });
                 const ms = await p.listModels();
                 for (const m of ms) {
-                    const modelId = m.id.includes('/') ? m.id : `${cp.id}/${m.id}`;
-                    if (!allModels.find(x => x.id === modelId)) {
+                    const pid = m.provider ?? cp.id;
+                    const modelId = m.id.includes('/') ? m.id : `${pid}/${m.id}`;
+                    if (!seen.has(modelId)) {
+                        seen.add(modelId);
                         allModels.push({
                             id: modelId,
                             name: m.name,
-                            provider: cp.id,
+                            provider: pid,
                             pricing: { input: m.pricing.input, output: m.pricing.output },
                             priceDesc: `$${m.pricing.input}/$${m.pricing.output} per 1M`,
                         });
@@ -93,8 +51,7 @@ modelsRouter.get('/', async (_req, res) => {
         }
 
         res.json(allModels);
-    } catch (err) {
-        // 完全失败时返回空
+    } catch {
         res.json([]);
     }
 });

@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const ANTHROPIC_MODELS: ModelInfo[] = [
+export const ANTHROPIC_MODELS: ModelInfo[] = [
     { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet', maxTokens: 8096, pricing: { input: 3.00, output: 15.00 }, provider: 'Anthropic' },
     { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', maxTokens: 8096, pricing: { input: 3.00, output: 15.00 }, provider: 'Anthropic' },
     { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', maxTokens: 8096, pricing: { input: 0.80, output: 4.00 }, provider: 'Anthropic' },

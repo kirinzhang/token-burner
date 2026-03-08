@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const MISTRAL_MODELS: ModelInfo[] = [
+export const MISTRAL_MODELS: ModelInfo[] = [
     { id: 'mistral-large-latest', name: 'Mistral Large', maxTokens: 131072, pricing: { input: 2.0, output: 6.0 }, provider: 'mistral' },
     { id: 'mistral-small-latest', name: 'Mistral Small', maxTokens: 131072, pricing: { input: 0.1, output: 0.3 }, provider: 'mistral' },
     { id: 'codestral-latest', name: 'Codestral', maxTokens: 256000, pricing: { input: 0.3, output: 0.9 }, provider: 'mistral' },

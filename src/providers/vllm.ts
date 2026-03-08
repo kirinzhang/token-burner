@@ -17,10 +17,13 @@ export class VLLMProvider extends BaseOpenAICompatibleProvider {
 
     override async listModels(): Promise<ModelInfo[]> {
         try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 1500);
             const res = await fetch(`${this.vllmBaseUrl}/models`, {
                 headers: { Authorization: 'Bearer EMPTY' },
-                signal: AbortSignal.timeout(3000),
+                signal: controller.signal,
             });
+            clearTimeout(timer);
             if (res.ok) {
                 const data = await res.json() as { data: Array<{ id: string }> };
                 return data.data.map(m => ({

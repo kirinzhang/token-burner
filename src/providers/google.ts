@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const GOOGLE_MODELS: ModelInfo[] = [
+export const GOOGLE_MODELS: ModelInfo[] = [
     { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash', maxTokens: 8192, pricing: { input: 0.10, output: 0.40 }, provider: 'Google' },
     { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite', maxTokens: 8192, pricing: { input: 0.075, output: 0.30 }, provider: 'Google' },
     { id: 'gemini-2.0-pro-exp-02-05', name: 'Gemini 2.0 Pro Exp', maxTokens: 8192, pricing: { input: 0.00, output: 0.00 }, provider: 'Google' },

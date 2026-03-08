@@ -7,7 +7,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const ZAI_MODELS: ModelInfo[] = [
+export const ZAI_MODELS: ModelInfo[] = [
     { id: 'glm-4-plus', name: 'GLM-4 Plus', maxTokens: 128000, pricing: { input: 0.14, output: 0.14 }, provider: 'zai' },
     { id: 'glm-4-air', name: 'GLM-4 Air', maxTokens: 128000, pricing: { input: 0.014, output: 0.014 }, provider: 'zai' },
     { id: 'glm-4-flash', name: 'GLM-4 Flash（免费）', maxTokens: 128000, pricing: { input: 0.00, output: 0.00 }, provider: 'zai' },

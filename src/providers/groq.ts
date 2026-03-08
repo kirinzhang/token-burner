@@ -6,7 +6,7 @@
 import { BaseOpenAICompatibleProvider } from './openai.js';
 import type { ModelInfo } from './base.js';
 
-const GROQ_MODELS: ModelInfo[] = [
+export const GROQ_MODELS: ModelInfo[] = [
     { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', maxTokens: 32768, pricing: { input: 0.59, output: 0.79 }, provider: 'groq' },
     { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', maxTokens: 131072, pricing: { input: 0.05, output: 0.08 }, provider: 'groq' },
     { id: 'deepseek-r1-distill-llama-70b', name: 'DeepSeek R1 (Groq)', maxTokens: 131072, pricing: { input: 0.75, output: 0.99 }, provider: 'groq' },
