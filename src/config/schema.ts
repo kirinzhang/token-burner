@@ -1,7 +1,11 @@
 /**
- * 配置 Schema 校验 + API Key 管理
- * 支持多 Provider 独立 Key 配置
- * 优先级：.env 环境变量 > 本地 config.json > 默认值
+ * 配置 Schema 校验 + API Key 管理（OpenClaw 风格）
+ *
+ * 环境变量命名参考 openclaw 规范：
+ *   OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY（Google）
+ *   ZAI_API_KEY（Z.AI/GLM）/ DEEPSEEK_API_KEY / MOONSHOT_API_KEY / MINIMAX_API_KEY
+ *
+ * 优先级：process.env > 本地 config.json > 默认值
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -9,52 +13,62 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { config as loadDotenv } from 'dotenv';
 import { DEFAULT_CONFIG } from './default.js';
-import type { ProviderName } from '../providers/factory.js';
+import type { BuiltinProviderName, ProviderConfig } from '../providers/factory.js';
+import type { CustomProviderConfig } from '../providers/custom.js';
 
-// 加载 .env 文件（项目根目录）
+// 加载 .env 文件
 loadDotenv();
 
-/** 每个 Provider 的独立 Key 配置 */
-export interface ProviderKeys {
-    openrouter?: { apiKey: string };
+/** Built-in Provider 独立 Key 配置 */
+export interface BuiltinKeys {
     openai?: { apiKey: string };
     anthropic?: { apiKey: string };
     google?: { apiKey: string };
-    minimax?: { apiKey: string; groupId?: string };
-    glm?: { apiKey: string };
+    zai?: { apiKey: string };
     deepseek?: { apiKey: string };
+    moonshot?: { apiKey: string };
+    minimax?: { apiKey: string; groupId?: string };
+    /** 旧版兼容 */
+    openrouter?: { apiKey: string };
 }
 
-export interface AppConfig extends ProviderKeys {
-    /** 当前激活的 Provider */
-    activeProvider: ProviderName;
-    /** 兼容旧版单 key 字段 */
-    apiKey?: string;
-    baseUrl?: string;
-    /** @deprecated 请使用 activeProvider */
-    provider?: string;
+export interface AppConfig extends BuiltinKeys, ProviderConfig {
+    activeProvider: string;
+    /** 自定义 Provider 列表（OpenRouter/Ollama/vLLM/代理等） */
+    customProviders?: CustomProviderConfig[];
     defaultModel: string;
     costLimitUsd: number;
+    /** 兼容旧版 */
+    apiKey?: string;
+    baseUrl?: string;
 }
 
 const CONFIG_DIR = join(homedir(), '.token-burner');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
 function ensureConfigDir(): void {
-    if (!existsSync(CONFIG_DIR)) {
-        mkdirSync(CONFIG_DIR, { recursive: true });
-    }
+    if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
 }
 
 function loadFileConfig(): Partial<AppConfig> {
     if (!existsSync(CONFIG_FILE)) return {};
     try {
-        const raw = readFileSync(CONFIG_FILE, 'utf-8');
-        return JSON.parse(raw) as Partial<AppConfig>;
+        return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8')) as Partial<AppConfig>;
     } catch {
         return {};
     }
 }
+
+/** 环境变量名映射（OpenClaw 规范） */
+const ENV_KEYS: Record<BuiltinProviderName, string> = {
+    openai: 'OPENAI_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    google: 'GEMINI_API_KEY',   // openclaw: GEMINI_API_KEY，兼容 GOOGLE_API_KEY
+    zai: 'ZAI_API_KEY',
+    deepseek: 'DEEPSEEK_API_KEY',
+    moonshot: 'MOONSHOT_API_KEY',
+    minimax: 'MINIMAX_API_KEY',
+};
 
 /**
  * 加载配置（环境变量 > 配置文件 > 默认值）
@@ -63,60 +77,51 @@ export function loadConfig(): AppConfig {
     ensureConfigDir();
     const f = loadFileConfig();
 
-    // 兼容旧版：如果文件中只有 apiKey 字段，迁移到对应 provider key
+    // 从旧 baseUrl 推断 provider（兼容旧版）
     const legacyKey = process.env.OPENAI_API_KEY || f.apiKey;
     const legacyBaseUrl = process.env.OPENAI_BASE_URL || f.baseUrl;
 
-    // 从 base URL 推断 provider（旧版兼容）
-    let inferred: ProviderName = 'openai';
+    let inferred: string = f.activeProvider || f.provider || 'openai';
     if (legacyBaseUrl?.includes('openrouter.ai')) inferred = 'openrouter';
-    else if (legacyBaseUrl?.includes('anthropic.com')) inferred = 'anthropic';
-    else if (legacyBaseUrl?.includes('minimax.chat')) inferred = 'minimax';
-    else if (legacyBaseUrl?.includes('bigmodel.cn')) inferred = 'glm';
+    else if (legacyBaseUrl?.includes('moonshot.ai')) inferred = 'moonshot';
+    else if (legacyBaseUrl?.includes('bigmodel.cn')) inferred = 'zai';
     else if (legacyBaseUrl?.includes('deepseek.com')) inferred = 'deepseek';
 
-    const activeProvider: ProviderName = f.activeProvider ?? inferred;
-
     const config: AppConfig = {
-        activeProvider,
+        activeProvider: inferred,
         defaultModel: process.env.DEFAULT_MODEL || f.defaultModel || DEFAULT_CONFIG.api.defaultModel,
         costLimitUsd: process.env.COST_LIMIT_USD
             ? parseFloat(process.env.COST_LIMIT_USD)
             : (f.costLimitUsd ?? DEFAULT_CONFIG.engine.costLimitUsd),
-        // 旧版兼容字段
         apiKey: legacyKey,
         baseUrl: legacyBaseUrl,
+        customProviders: f.customProviders ?? [],
     };
 
-    // 合并各 provider 独立 Key
-    if (f.openrouter || process.env.OPENROUTER_API_KEY) {
-        config.openrouter = { apiKey: process.env.OPENROUTER_API_KEY || f.openrouter?.apiKey || '' };
-    }
-    if (f.openai || process.env.OPENAI_API_KEY) {
-        config.openai = { apiKey: process.env.OPENAI_API_KEY || f.openai?.apiKey || '' };
-    }
-    if (f.anthropic || process.env.ANTHROPIC_API_KEY) {
-        config.anthropic = { apiKey: process.env.ANTHROPIC_API_KEY || f.anthropic?.apiKey || '' };
-    }
-    if (f.google || process.env.GOOGLE_API_KEY) {
-        config.google = { apiKey: process.env.GOOGLE_API_KEY || f.google?.apiKey || '' };
-    }
-    if (f.minimax || process.env.MINIMAX_API_KEY) {
-        config.minimax = {
-            apiKey: process.env.MINIMAX_API_KEY || f.minimax?.apiKey || '',
-            groupId: process.env.MINIMAX_GROUP_ID || f.minimax?.groupId,
-        };
-    }
-    if (f.glm || process.env.GLM_API_KEY) {
-        config.glm = { apiKey: process.env.GLM_API_KEY || f.glm?.apiKey || '' };
-    }
-    if (f.deepseek || process.env.DEEPSEEK_API_KEY) {
-        config.deepseek = { apiKey: process.env.DEEPSEEK_API_KEY || f.deepseek?.apiKey || '' };
+    // Built-in provider keys（env 优先，兼容旧 openrouter key）
+    const builtins: BuiltinProviderName[] = ['openai', 'anthropic', 'google', 'zai', 'deepseek', 'moonshot', 'minimax'];
+    for (const p of builtins) {
+        const envKey = process.env[ENV_KEYS[p]];
+        // Google 额外兼容 GOOGLE_API_KEY
+        const envKeyFallback = p === 'google' ? process.env['GOOGLE_API_KEY'] : undefined;
+        const fileConf = f[p as keyof BuiltinKeys] as { apiKey?: string } | undefined;
+        const key = envKey || envKeyFallback || fileConf?.apiKey;
+        if (key) {
+            if (p === 'minimax') {
+                config[p] = { apiKey: key, groupId: process.env.MINIMAX_GROUP_ID || (f.minimax as { groupId?: string } | undefined)?.groupId };
+            } else {
+                (config as unknown as Record<string, unknown>)[p] = { apiKey: key };
+            }
+        }
     }
 
-    // 兜底：如果 activeProvider 对应的 key 还没设置，用 legacyKey 补上
-    if (legacyKey && !config[activeProvider as keyof ProviderKeys]) {
-        (config as unknown as Record<string, unknown>)[activeProvider] = { apiKey: legacyKey };
+    // 旧版 openrouter key 迁移
+    const orKey = process.env.OPENROUTER_API_KEY || f.openrouter?.apiKey;
+    if (orKey) config.openrouter = { apiKey: orKey };
+
+    // 兼容 legacyKey 兜底
+    if (legacyKey && inferred === 'openai' && !config.openai) {
+        config.openai = { apiKey: legacyKey };
     }
 
     return config;
@@ -129,11 +134,15 @@ export function saveConfig(config: Partial<AppConfig>): void {
     ensureConfigDir();
     const current = loadFileConfig();
     const merged = { ...current, ...config };
+    // 深度合并 customProviders（替换同 id 的）
+    if (config.customProviders) {
+        merged.customProviders = config.customProviders;
+    }
     writeFileSync(CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf-8');
 }
 
 /**
- * 读取 + 保存（用于局部更新）
+ * 读取配置（async 版本，兼容 OAuth 路由）
  */
 export async function getConfig(): Promise<AppConfig> {
     return loadConfig();
@@ -153,14 +162,14 @@ export function validateApiKey(key: string): boolean {
 export function validateConfig(config: AppConfig): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
     const p = config.activeProvider;
-    const hasKey = !!(config[p as keyof ProviderKeys] as { apiKey?: string } | undefined)?.apiKey
-        || !!config.apiKey;
 
-    if (!hasKey) {
-        errors.push(`未配置 ${p} 的 API Key，请在配置页填写`);
-    }
-    if (config.costLimitUsd <= 0) {
-        errors.push('费用上限必须大于 0');
-    }
+    // 检查 built-in provider 是否有 key
+    const builtinConf = config[p as keyof BuiltinKeys] as { apiKey?: string } | undefined;
+    const customConf = config.customProviders?.find(c => c.id === p);
+    const hasKey = !!builtinConf?.apiKey || !!customConf?.apiKey || !!config.apiKey;
+
+    if (!hasKey) errors.push(`未配置 ${p} 的 API Key，请在配置页填写`);
+    if (config.costLimitUsd <= 0) errors.push('费用上限必须大于 0');
+
     return { valid: errors.length === 0, errors };
 }

@@ -8,124 +8,121 @@ const API = 'http://localhost:3000/api';
 // ===================== 状态 =====================
 let currentTaskId = null;
 let currentSse = null;
-let models = [];
-let runningStartTime = null;
-let elapsedTimer = null;
-
-// ===================== 初始化 =====================
-document.addEventListener('DOMContentLoaded', async () => {
-    initOAuth();    // 检测 OpenRouter OAuth 回调
-    initTabs();
-    initStrategyCards();
-    initTokenPresets();
-    initCustomModelToggle();
-    await Promise.all([
-        loadConfig(),
-        loadModels(),
-        loadHistory(),
-        checkApiStatus(),
-    ]);
-    setupEstimateListeners();
-    setupButtons();
-});
-
-// ===================== 标签页切换 =====================
-function initTabs() {
-    document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const tab = btn.dataset.tab;
-            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById(`panel-${tab}`).classList.add('active');
-            if (tab === 'history') loadHistory();
-        });
-    });
-}
-
-// ===================== 策略卡片 =====================
-function initStrategyCards() {
-    document.querySelectorAll('.strategy-card').forEach(card => {
-        card.addEventListener('click', () => {
-            document.querySelectorAll('.strategy-card').forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
-            const radio = card.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-            updateEstimate();
-        });
-    });
-}
-
-// ===================== Token 预设 =====================
-function initTokenPresets() {
-    document.querySelectorAll('.preset-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            document.getElementById('tokenTarget').value = btn.dataset.value;
-            updateEstimate();
-        });
-    });
-
-    document.getElementById('tokenTarget').addEventListener('input', (e) => {
-        const val = parseInt(e.target.value, 10);
-        document.querySelectorAll('.preset-btn').forEach(b => {
-            b.classList.toggle('active', parseInt(b.dataset.value) === val);
-        });
-        updateEstimate();
-    });
-}
+// ===================== 加载模型列表（Combo Input） =====================
+// ===================== 模型列表（全局状态）=====================
+let models = []; // [{id: "openai/gpt-4o", name, provider, pricing}]
 
 // ===================== 加载模型列表 =====================
 async function loadModels() {
     try {
         const res = await fetch(`${API}/models`);
         models = await res.json();
-        const sel = document.getElementById('modelSelect');
-
-        // 按 provider 分组
-        const grouped = {};
-        for (const m of models) {
-            if (!grouped[m.provider]) grouped[m.provider] = [];
-            grouped[m.provider].push(m);
-        }
-
-        const providerIcons = {
-            OpenAI: '🤖', Anthropic: '🔮', Google: '🌐',
-            Meta: '🦙', Mistral: '🌬️', DeepSeek: '🐋',
-            Qwen: '☁️', Cohere: '🪐',
-        };
-
-        sel.innerHTML = Object.entries(grouped).map(([provider, ms]) => {
-            const icon = providerIcons[provider] || '🔧';
-            const options = ms.map(m =>
-                `<option value="${m.id}">${m.name}  ·  $${m.pricing.input}/$${m.pricing.output} per 1M</option>`
-            ).join('');
-            return `<optgroup label="${icon} ${provider}">${options}</optgroup>`;
-        }).join('');
-
-        sel.addEventListener('change', updateEstimate);
-        updateModelHint();
-        updateEstimate();
+        initModelCombo();
     } catch (e) {
         console.error('加载模型失败', e);
     }
 }
 
 function updateModelHint() {
-    const sel = document.getElementById('modelSelect');
-    const model = models.find(m => m.id === sel.value);
+    const input = document.getElementById('modelComboInput');
     const hint = document.getElementById('modelPriceHint');
-    if (model) {
+    if (!input || !hint) return;
+    const val = input.value;
+    const model = models.find(m => m.id === val);
+    if (model && model.pricing) {
         hint.textContent = `输入: $${model.pricing.input}/1M tokens · 输出: $${model.pricing.output}/1M tokens`;
+    } else if (val && val.includes('/')) {
+        hint.textContent = `自定义模型: ${val}`;
+    } else {
+        hint.textContent = '';
     }
 }
+
+function initModelCombo() {
+    const input = document.getElementById('modelComboInput');
+    const btn = document.getElementById('modelComboBtn');
+    const dropdown = document.getElementById('modelComboDropdown');
+    if (!input || !btn || !dropdown) return;
+
+    function renderDropdown(filter) {
+        const q = (filter || '').toLowerCase();
+        const filtered = q
+            ? models.filter(m => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+            : models;
+
+        if (filtered.length === 0) {
+            dropdown.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:0.82rem">无匹配模型，将直接使用输入的 provider/model</div>';
+            return;
+        }
+
+        const groups = {};
+        for (const m of filtered) {
+            if (!groups[m.provider]) groups[m.provider] = [];
+            groups[m.provider].push(m);
+        }
+
+        const providerIcons = { openai: '🤖', anthropic: '🔮', google: '🌏', zai: '🧠', deepseek: '🐋', moonshot: '🌙', minimax: '🇨🇳' };
+
+        dropdown.innerHTML = Object.entries(groups).map(([p, ms]) => {
+            const icon = providerIcons[p] || '🧩';
+            const items = ms.map(m => {
+                const isActive = input.value === m.id;
+                const price = m.pricing ? `$${m.pricing.input}/$${m.pricing.output} /1M` : '';
+                return `<div class="combo-model-item ${isActive ? 'active' : ''}" data-id="${m.id}">
+                    <span class="combo-model-id">${m.id}</span>
+                    <span class="combo-model-price">${price}</span>
+                </div>`;
+            }).join('');
+            return `<div class="combo-group-label">${icon} ${p}</div>${items}`;
+        }).join('');
+
+        dropdown.querySelectorAll('.combo-model-item').forEach(el => {
+            el.addEventListener('click', () => {
+                input.value = el.dataset.id;
+                closeDropdown();
+                updateModelHint();
+                updateEstimate();
+            });
+        });
+    }
+
+    function openDropdown() {
+        dropdown.style.display = 'block';
+        renderDropdown(input.value);
+        btn.textContent = '▲';
+    }
+
+    function closeDropdown() {
+        dropdown.style.display = 'none';
+        btn.textContent = '▼';
+    }
+
+    btn.addEventListener('click', (e) => { e.stopPropagation(); if (dropdown.style.display === 'none') openDropdown(); else closeDropdown(); });
+    input.addEventListener('focus', openDropdown);
+    input.addEventListener('input', () => {
+        if (dropdown.style.display !== 'none') renderDropdown(input.value);
+        updateModelHint();
+        updateEstimate();
+    });
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest?.('#modelCombo') && !e.target.closest?.('#modelComboDropdown')) closeDropdown();
+    });
+
+    if (models.length > 0 && !input.value) {
+        input.value = models[0].id;
+        updateModelHint();
+        updateEstimate();
+    }
+}
+
+// initCustomModelToggle — 已整合入 combo input，保留空函数兼容旧调用
+function initCustomModelToggle() { }
 
 // ===================== 费用预估 =====================
 async function updateEstimate() {
     updateModelHint();
     const target = parseInt(document.getElementById('tokenTarget').value, 10);
-    const model = getSelectedModel() || document.getElementById('modelSelect').value;
+    const model = getSelectedModel();
     const strategy = document.querySelector('input[name="strategy"]:checked')?.value || 'turbo';
 
     if (!target || !model) return;
@@ -191,14 +188,17 @@ async function loadConfig() {
         // 全局设置
         const costLimit = document.getElementById('cfgCostLimit');
         if (costLimit) costLimit.value = conf.costLimitUsd || 10;
-        // 渲染 Provider 卡片网格
+        // 渲染 Built-in Provider 卡片
         await renderProviderGrid(conf);
-        // 更新 API 状态标志
+        // 渲染 Custom Provider 列表
+        renderCustomProviders(conf.customProviders || [], conf.activeProvider);
+        // 更新 API 状态
         const dot = document.getElementById('apiStatus');
         const label = document.getElementById('apiStatusLabel');
-        const hasAnyKey = conf.providers && Object.values(conf.providers).some(p => p.configured);
+        const hasBuiltinKey = conf.providers && Object.values(conf.providers).some(p => p.configured);
+        const hasCustom = (conf.customProviders || []).some(cp => cp.apiKey);
         if (dot && label) {
-            if (hasAnyKey) {
+            if (hasBuiltinKey || hasCustom) {
                 dot.className = 'status-dot ok';
                 label.textContent = `已就绪 (${conf.activeProvider || 'openai'})`;
             } else {
@@ -273,32 +273,8 @@ function setupButtons() {
     document.getElementById('closeDrawer').addEventListener('click', () => {
         document.getElementById('logDrawer').style.display = 'none';
     });
-}
-
-// ===================== 自定义模型 Toggle =====================
-function initCustomModelToggle() {
-    const toggle = document.getElementById('customModelToggle');
-    const wrap = document.getElementById('customModelWrap');
-    const sel = document.getElementById('modelSelect');
-    if (!toggle || !wrap) return;
-    toggle.addEventListener('change', () => {
-        const on = toggle.checked;
-        wrap.style.display = on ? '' : 'none';
-        sel.disabled = on;
-        sel.style.opacity = on ? '0.35' : '';
-        updateEstimate();
-    });
-    document.getElementById('customModelId').addEventListener('input', updateEstimate);
-}
-
-// 获取当前选中的模型 ID
-function getSelectedModel() {
-    const toggle = document.getElementById('customModelToggle');
-    if (toggle && toggle.checked) {
-        const custom = document.getElementById('customModelId').value.trim();
-        if (custom) return custom;
-    }
-    return document.getElementById('modelSelect').value;
+    // Custom Provider 咋动
+    setupCustomProvider();
 }
 
 // ===================== 启动任务 =====================
@@ -581,8 +557,8 @@ async function renderProviderGrid(conf) {
         const badge = isActive
             ? `<span class="provider-badge active-label">✅ 激活中</span>`
             : isConnected
-            ? `<span class="provider-badge connected">已配置</span>`
-            : '';
+                ? `<span class="provider-badge connected">已配置</span>`
+                : '';
 
         const fields = p.fields.map(f => `
             <div class="provider-key-input">
@@ -738,4 +714,89 @@ function showToast(msg) {
     toast.style.opacity = '1';
     clearTimeout(toast._timer);
     toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 3500);
+}
+
+// ===================== CUSTOM PROVIDER CRUD =====================
+
+function setupCustomProvider() {
+    const addBtn = document.getElementById('addCustomProviderBtn');
+    const form = document.getElementById('customProviderForm');
+    const saveBtn = document.getElementById('saveCustomProviderBtn');
+    const cancelBtn = document.getElementById('cancelCustomProviderBtn');
+    if (!addBtn || !form) return;
+
+    let editingId = null;
+
+    addBtn.addEventListener('click', () => {
+        editingId = null;
+        document.getElementById('cpId').value = '';
+        document.getElementById('cpName').value = '';
+        document.getElementById('cpBaseUrl').value = '';
+        document.getElementById('cpApiKey').value = '';
+        document.getElementById('cpId').disabled = false;
+        form.style.display = 'block';
+        document.getElementById('cpId').focus();
+    });
+
+    cancelBtn.addEventListener('click', () => { form.style.display = 'none'; });
+
+    saveBtn.addEventListener('click', async () => {
+        const id = document.getElementById('cpId').value.trim();
+        const name = document.getElementById('cpName').value.trim() || id;
+        const baseUrl = document.getElementById('cpBaseUrl').value.trim();
+        const apiKey = document.getElementById('cpApiKey').value.trim();
+        if (!id || !baseUrl) { showToast('❌ Provider ID 和 Base URL 不能为空'); return; }
+
+        const res = await fetch(`${API}/config/custom-provider`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, name, baseUrl, apiKey, autoFetchModels: true }),
+        });
+        if (res.ok) {
+            form.style.display = 'none';
+            showToast(`✅ Custom Provider "${name}" 已保存`);
+            await loadConfig();
+            await loadModels();
+        }
+    });
+}
+
+function renderCustomProviders(customProviders, activeProvider) {
+    const list = document.getElementById('customProviderList');
+    if (!list) return;
+
+    if (!customProviders || customProviders.length === 0) {
+        list.innerHTML = `<div class="empty-state" style="padding:24px 0">
+            <div class="empty-icon">🧩</div>
+            <div class="empty-text">暂无自定义 Provider，点击「+ 添加」</div>
+        </div>`;
+        return;
+    }
+
+    list.innerHTML = customProviders.map(cp => {
+        const isActive = cp.id === activeProvider;
+        return `<div class="cp-list-item ${isActive ? 'active-cp' : ''}">
+            <span class="cp-list-icon">🧩</span>
+            <div class="cp-list-info">
+                <div class="cp-list-name">${cp.name || cp.id} ${isActive ? '<span class="provider-badge active-label">✅ 激活中</span>' : ''}</div>
+                <div class="cp-list-url">${cp.baseUrl}</div>
+            </div>
+            <div class="cp-list-actions">
+                <button class="btn-cp-action" onclick="activateProvider('${cp.id}')">
+                    ${isActive ? '✓ 当前激活' : '设为激活'}
+                </button>
+                <button class="btn-cp-action btn-cp-delete" onclick="deleteCustomProvider('${cp.id}')">🗑</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function deleteCustomProvider(id) {
+    if (!confirm(`确认删除 Custom Provider "${id}"？`)) return;
+    const res = await fetch(`${API}/config/custom-provider/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+        showToast(`✅ 已删除 "${id}"`);
+        await loadConfig();
+        await loadModels();
+    }
 }

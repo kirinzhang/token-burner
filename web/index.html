@@ -153,25 +153,16 @@
             </div>
           </div>
 
-          <!-- 模型选择 -->
+          <!-- 模型选择（combo：可选可输入 provider/model） -->
           <div class="form-section">
-            <label class="form-label" for="modelSelect">选择模型</label>
-            <select class="form-select" id="modelSelect">
-              <option value="">加载中...</option>
-            </select>
-            <!-- 自定义模型切换 -->
-            <div class="custom-model-toggle">
-              <label class="toggle-label">
-                <input type="checkbox" id="customModelToggle" class="toggle-input">
-                <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                <span class="toggle-text">自定义模型 ID（填入最新模型）</span>
-              </label>
+            <label class="form-label">选择或输入模型</label>
+            <div class="model-combo" id="modelCombo">
+              <input type="text" class="form-input model-combo-input" id="modelComboInput"
+                placeholder="provider/model，如 openai/gpt-4o 或 anthropic/claude-3-7-sonnet-20250219" autocomplete="off"
+                spellcheck="false">
+              <button class="model-combo-btn" id="modelComboBtn" title="展开/收起模型列表">▼</button>
             </div>
-            <div id="customModelWrap" style="display:none;margin-top:10px">
-              <input type="text" class="form-input" id="customModelId"
-                placeholder="例：claude-3-7-sonnet-20250219 、 gemini-2.0-pro 、 deepseek/deepseek-r2">
-              <div class="form-hint">输入任意官方模型 ID，请确保与您的 API Base URL 匹配</div>
-            </div>
+            <div class="model-combo-dropdown" id="modelComboDropdown" style="display:none"></div>
             <div class="form-hint" id="modelPriceHint"></div>
           </div>
 
@@ -278,14 +269,62 @@
           <div class="config-success" id="configSuccess" style="display:none">✅ 配置已保存</div>
         </div>
 
-        <!-- Provider 卡片网格 -->
+        <!-- Built-in Provider 卡片网格 -->
         <div class="card glass">
           <div class="card-header">
-            <h2 class="card-title">🔌 API Provider</h2>
+            <h2 class="card-title">🔌 Built-in Providers</h2>
             <div class="config-hint-inline">当前激活：<strong id="activeProviderLabel">—</strong></div>
           </div>
           <div class="provider-grid" id="providerGrid">
             <!-- 由 JS 动态渲染 -->
+          </div>
+        </div>
+
+        <!-- Custom Provider 管理 -->
+        <div class="card glass">
+          <div class="card-header">
+            <h2 class="card-title">🧩 自定义 Provider</h2>
+            <button class="btn btn-ghost btn-sm" id="addCustomProviderBtn">+ 添加</button>
+          </div>
+          <div class="form-hint" style="margin-bottom:12px">
+            添加任意 OpenAI 兼容接口（OpenRouter / Ollama / vLLM / 本地代理等），支持自动拉取模型列表
+          </div>
+
+          <!-- 添加/编辑表单（默认隐藏） -->
+          <div id="customProviderForm" style="display:none" class="custom-provider-form">
+            <div class="cp-form-grid">
+              <div class="form-section">
+                <label class="form-label">Provider ID <span style="color:var(--text-muted);font-size:0.75rem">（唯一标识，如
+                    openrouter、my-proxy）</span></label>
+                <input type="text" class="form-input" id="cpId" placeholder="openrouter">
+              </div>
+              <div class="form-section">
+                <label class="form-label">名称</label>
+                <input type="text" class="form-input" id="cpName" placeholder="OpenRouter">
+              </div>
+              <div class="form-section cp-full">
+                <label class="form-label">Base URL</label>
+                <input type="url" class="form-input" id="cpBaseUrl" placeholder="https://openrouter.ai/api/v1">
+              </div>
+              <div class="form-section cp-full">
+                <label class="form-label">API Key <span style="color:var(--text-muted);font-size:0.75rem">（Ollama
+                    等无需鉴权可留空）</span></label>
+                <input type="password" class="form-input" id="cpApiKey" placeholder="sk-or-...">
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button class="btn btn-primary btn-sm" id="saveCustomProviderBtn">💾 保存</button>
+              <button class="btn btn-ghost btn-sm" id="cancelCustomProviderBtn">取消</button>
+            </div>
+          </div>
+
+          <!-- Custom Provider 列表 -->
+          <div id="customProviderList">
+            <!-- 由 JS 渲染 -->
+            <div class="empty-state" style="padding:24px 0">
+              <div class="empty-icon">🧩</div>
+              <div class="empty-text">暂无自定义 Provider，点击「+ 添加」添加 OpenRouter 等</div>
+            </div>
           </div>
         </div>
       </section>
