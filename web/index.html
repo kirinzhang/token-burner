@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Token Burner 🔥 Dashboard</title>
+  <title>Token Burner — Burn tokens like a Pro</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Share+Tech+Mono&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -153,16 +153,23 @@
             </div>
           </div>
 
-          <!-- 模型选择（combo：可选可输入 provider/model） -->
+          <!-- 模型选择：级联两级下拉 -->
           <div class="form-section">
-            <label class="form-label">选择或输入模型</label>
-            <div class="model-combo" id="modelCombo">
-              <input type="text" class="form-input model-combo-input" id="modelComboInput"
-                placeholder="provider/model，如 openai/gpt-4o 或 anthropic/claude-3-7-sonnet-20250219" autocomplete="off"
-                spellcheck="false">
-              <button class="model-combo-btn" id="modelComboBtn" title="展开/收起模型列表">▼</button>
+            <label class="form-label">&gt;_ 选择 Provider</label>
+            <select class="form-select" id="providerSelect">
+              <option value="">»» 请选择 Provider ««</option>
+              <!-- 由 JS 媌决渲染 -->
+            </select>
+          </div>
+          <div class="form-section" id="modelSelectSection">
+            <label class="form-label">&gt;_ 选择模型</label>
+            <select class="form-select" id="modelSelect">
+              <option value="">»» 请先选择 Provider ««</option>
+            </select>
+            <!-- OpenRouter 搜索框（选 OpenRouter 时显示） -->
+            <div id="orSearchWrap" style="display:none;margin-top:8px">
+              <input type="text" class="form-input" id="orSearchInput" placeholder="🔍 搜索 OpenRouter 800+ 模型...">
             </div>
-            <div class="model-combo-dropdown" id="modelComboDropdown" style="display:none"></div>
             <div class="form-hint" id="modelPriceHint"></div>
           </div>
 
@@ -269,15 +276,21 @@
           <div class="config-success" id="configSuccess" style="display:none">✅ 配置已保存</div>
         </div>
 
-        <!-- Built-in Provider 卡片网格 -->
+        <!-- Built-in Provider 卡片网格（分组） -->
         <div class="card glass">
           <div class="card-header">
-            <h2 class="card-title">🔌 Built-in Providers</h2>
-            <div class="config-hint-inline">当前激活：<strong id="activeProviderLabel">—</strong></div>
+            <h2 class="card-title">► PROVIDER_MATRIX <span class="matrix-blink">_</span></h2>
+            <div class="config-hint-inline">ACTIVE: <strong id="activeProviderLabel">---</strong></div>
           </div>
-          <div class="provider-grid" id="providerGrid">
-            <!-- 由 JS 动态渲染 -->
-          </div>
+          <!-- 云端主流 -->
+          <div class="provider-group-label">// CLOUD_PROVIDERS</div>
+          <div class="provider-grid" id="providerGridCloud"><!-- 由 JS 渲染 --></div>
+          <!-- 国内供应商 -->
+          <div class="provider-group-label" style="margin-top:16px">// CN_PROVIDERS</div>
+          <div class="provider-grid" id="providerGridCn"><!-- 由 JS 渲染 --></div>
+          <!-- 本地部署 -->
+          <div class="provider-group-label" style="margin-top:16px">// LOCAL_PROVIDERS</div>
+          <div class="provider-grid" id="providerGridLocal"><!-- 由 JS 渲染 --></div>
         </div>
 
         <!-- Custom Provider 管理 -->

@@ -24,12 +24,22 @@ export interface BuiltinKeys {
     openai?: { apiKey: string };
     anthropic?: { apiKey: string };
     google?: { apiKey: string };
+    openrouter?: { apiKey: string };
+    xai?: { apiKey: string };
+    mistral?: { apiKey: string };
+    groq?: { apiKey: string };
+    cerebras?: { apiKey: string };
+    huggingface?: { apiKey: string };
     zai?: { apiKey: string };
     deepseek?: { apiKey: string };
     moonshot?: { apiKey: string };
     minimax?: { apiKey: string; groupId?: string };
-    /** 旧版兼容 */
-    openrouter?: { apiKey: string };
+    ollama?: { baseUrl?: string };
+    vllm?: { baseUrl?: string };
+    // 小众（仅环境变量，不展示 UI）
+    volcengine?: { apiKey: string };
+    byteplus?: { apiKey: string };
+    kilocode?: { apiKey: string };
 }
 
 export interface AppConfig extends BuiltinKeys, ProviderConfig {
@@ -60,14 +70,23 @@ function loadFileConfig(): Partial<AppConfig> {
 }
 
 /** 环境变量名映射（OpenClaw 规范） */
-const ENV_KEYS: Record<BuiltinProviderName, string> = {
+const ENV_KEYS: Record<string, string> = {
     openai: 'OPENAI_API_KEY',
     anthropic: 'ANTHROPIC_API_KEY',
-    google: 'GEMINI_API_KEY',   // openclaw: GEMINI_API_KEY，兼容 GOOGLE_API_KEY
+    google: 'GEMINI_API_KEY',
+    openrouter: 'OPENROUTER_API_KEY',
+    xai: 'XAI_API_KEY',
+    mistral: 'MISTRAL_API_KEY',
+    groq: 'GROQ_API_KEY',
+    cerebras: 'CEREBRAS_API_KEY',
+    huggingface: 'HF_TOKEN',
     zai: 'ZAI_API_KEY',
     deepseek: 'DEEPSEEK_API_KEY',
     moonshot: 'MOONSHOT_API_KEY',
     minimax: 'MINIMAX_API_KEY',
+    volcengine: 'VOLCANO_ENGINE_API_KEY',
+    byteplus: 'BYTEPLUS_API_KEY',
+    kilocode: 'KILOCODE_API_KEY',
 };
 
 /**
@@ -98,12 +117,12 @@ export function loadConfig(): AppConfig {
         customProviders: f.customProviders ?? [],
     };
 
-    // Built-in provider keys（env 优先，兼容旧 openrouter key）
-    const builtins: BuiltinProviderName[] = ['openai', 'anthropic', 'google', 'zai', 'deepseek', 'moonshot', 'minimax'];
-    for (const p of builtins) {
-        const envKey = process.env[ENV_KEYS[p]];
-        // Google 额外兼容 GOOGLE_API_KEY
-        const envKeyFallback = p === 'google' ? process.env['GOOGLE_API_KEY'] : undefined;
+    // Built-in provider keys（env 优先）
+    for (const [p, envVarName] of Object.entries(ENV_KEYS)) {
+        if (p === 'ollama' || p === 'vllm') continue;
+        const envKey = process.env[envVarName];
+        const envKeyFallback = p === 'google' ? process.env['GOOGLE_API_KEY']
+            : p === 'huggingface' ? process.env['HUGGINGFACE_HUB_TOKEN'] : undefined;
         const fileConf = f[p as keyof BuiltinKeys] as { apiKey?: string } | undefined;
         const key = envKey || envKeyFallback || fileConf?.apiKey;
         if (key) {
@@ -115,9 +134,11 @@ export function loadConfig(): AppConfig {
         }
     }
 
-    // 旧版 openrouter key 迁移
-    const orKey = process.env.OPENROUTER_API_KEY || f.openrouter?.apiKey;
-    if (orKey) config.openrouter = { apiKey: orKey };
+    // 本地 Provider URL 设置
+    const ollamaUrl = process.env['OLLAMA_BASE_URL'] || (f.ollama as { baseUrl?: string } | undefined)?.baseUrl;
+    const vllmUrl = process.env['VLLM_BASE_URL'] || (f.vllm as { baseUrl?: string } | undefined)?.baseUrl;
+    if (ollamaUrl) config.ollama = { baseUrl: ollamaUrl };
+    if (vllmUrl) config.vllm = { baseUrl: vllmUrl };
 
     // 兼容 legacyKey 兜底
     if (legacyKey && inferred === 'openai' && !config.openai) {

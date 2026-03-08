@@ -8,115 +8,149 @@ const API = 'http://localhost:3000/api';
 // ===================== 状态 =====================
 let currentTaskId = null;
 let currentSse = null;
-// ===================== 加载模型列表（Combo Input） =====================
-// ===================== 模型列表（全局状态）=====================
 let models = []; // [{id: "openai/gpt-4o", name, provider, pricing}]
+let providerMeta = {}; // {openai: {label,icon,...}}
 
 // ===================== 加载模型列表 =====================
 async function loadModels() {
     try {
         const res = await fetch(`${API}/models`);
         models = await res.json();
-        initModelCombo();
+        initProviderModelSelect();
     } catch (e) {
         console.error('加载模型失败', e);
     }
 }
 
+// ===================== 级联模型选择 =====================
+
+/** 初始化 provider + model 两级下拉 */
+function initProviderModelSelect() {
+    const providerSel = document.getElementById('providerSelect');
+    const modelSel = document.getElementById('modelSelect');
+    const orWrap = document.getElementById('orSearchWrap');
+    const orInput = document.getElementById('orSearchInput');
+    if (!providerSel || !modelSel) return;
+
+    // 按 provider 分组模型
+    const providerGroups = {};
+    for (const m of models) {
+        if (!providerGroups[m.provider]) providerGroups[m.provider] = [];
+        providerGroups[m.provider].push(m);
+    }
+
+    // 充忆 provider 下拉
+    const icons = {
+        openai: '🤖', anthropic: '🔮', google: '✨', openrouter: '🌐',
+        xai: '⚡', mistral: '🌊', groq: '🚀', cerebras: '🧬', huggingface: '🤗',
+        zai: '🧠', deepseek: '🐋', moonshot: '🌙', minimax: '🇨🇳',
+        ollama: '🦙', vllm: '⚙️'
+    };
+
+    const providerIds = Object.keys(providerGroups);
+    providerSel.innerHTML = `<option value="">»» 请选择 Provider ««</option>` +
+        providerIds.map(p => {
+            const icon = icons[p] || '🧩';
+            const cnt = providerGroups[p].length;
+            return `<option value="${p}">${icon} ${p} (${cnt}个模型)</option>`;
+        }).join('');
+
+    // provider 变化时更新 model 下拉
+    providerSel.addEventListener('change', () => {
+        const p = providerSel.value;
+        const isOR = p === 'openrouter';
+        if (orWrap) orWrap.style.display = isOR ? '' : 'none';
+        if (!p) {
+            modelSel.innerHTML = `<option value="">»» 请先选择 Provider ««</option>`;
+            return;
+        }
+        const ms = providerGroups[p] || [];
+        modelSel.innerHTML = ms.map(m =>
+            `<option value="${m.id}">${m.name}${m.pricing ? ` — $${m.pricing.input}/$${m.pricing.output}` : ''}</option>`
+        ).join('');
+        updateModelHint();
+        updateEstimate();
+    });
+
+    modelSel.addEventListener('change', () => { updateModelHint(); updateEstimate(); });
+
+    // OpenRouter 搜索过滤
+    if (orInput) {
+        orInput.addEventListener('input', () => {
+            const q = orInput.value.toLowerCase();
+            const p = providerSel.value;
+            if (p !== 'openrouter') return;
+            const ms = (providerGroups['openrouter'] || []).filter(
+                m => !q || m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
+            );
+            modelSel.innerHTML = ms.map(m =>
+                `<option value="${m.id}">${m.name}${m.pricing ? ` — $${m.pricing.input}/$${m.pricing.output}` : ''}</option>`
+            ).join('');
+        });
+    }
+
+    // 默认选中第一个 provider
+    if (providerIds.length > 0) {
+        providerSel.value = providerIds[0];
+        providerSel.dispatchEvent(new Event('change'));
+    }
+}
+
+function initModelCombo() { initProviderModelSelect(); } // 居安旧调用
+
 function updateModelHint() {
-    const input = document.getElementById('modelComboInput');
     const hint = document.getElementById('modelPriceHint');
-    if (!input || !hint) return;
-    const val = input.value;
-    const model = models.find(m => m.id === val);
-    if (model && model.pricing) {
-        hint.textContent = `输入: $${model.pricing.input}/1M tokens · 输出: $${model.pricing.output}/1M tokens`;
-    } else if (val && val.includes('/')) {
-        hint.textContent = `自定义模型: ${val}`;
+    if (!hint) return;
+    const m = models.find(x => x.id === getSelectedModel());
+    if (m && m.pricing) {
+        hint.textContent = `输入: $${m.pricing.input}/1M · 输出: $${m.pricing.output}/1M tokens`;
     } else {
         hint.textContent = '';
     }
 }
 
-function initModelCombo() {
-    const input = document.getElementById('modelComboInput');
-    const btn = document.getElementById('modelComboBtn');
-    const dropdown = document.getElementById('modelComboDropdown');
-    if (!input || !btn || !dropdown) return;
+// initCustomModelToggle — 居安旧调用
+function initCustomModelToggle() { }
 
-    function renderDropdown(filter) {
-        const q = (filter || '').toLowerCase();
-        const filtered = q
-            ? models.filter(m => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
-            : models;
-
-        if (filtered.length === 0) {
-            dropdown.innerHTML = '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:0.82rem">无匹配模型，将直接使用输入的 provider/model</div>';
-            return;
-        }
-
-        const groups = {};
-        for (const m of filtered) {
-            if (!groups[m.provider]) groups[m.provider] = [];
-            groups[m.provider].push(m);
-        }
-
-        const providerIcons = { openai: '🤖', anthropic: '🔮', google: '🌏', zai: '🧠', deepseek: '🐋', moonshot: '🌙', minimax: '🇨🇳' };
-
-        dropdown.innerHTML = Object.entries(groups).map(([p, ms]) => {
-            const icon = providerIcons[p] || '🧩';
-            const items = ms.map(m => {
-                const isActive = input.value === m.id;
-                const price = m.pricing ? `$${m.pricing.input}/$${m.pricing.output} /1M` : '';
-                return `<div class="combo-model-item ${isActive ? 'active' : ''}" data-id="${m.id}">
-                    <span class="combo-model-id">${m.id}</span>
-                    <span class="combo-model-price">${price}</span>
-                </div>`;
-            }).join('');
-            return `<div class="combo-group-label">${icon} ${p}</div>${items}`;
-        }).join('');
-
-        dropdown.querySelectorAll('.combo-model-item').forEach(el => {
-            el.addEventListener('click', () => {
-                input.value = el.dataset.id;
-                closeDropdown();
-                updateModelHint();
-                updateEstimate();
-            });
-        });
-    }
-
-    function openDropdown() {
-        dropdown.style.display = 'block';
-        renderDropdown(input.value);
-        btn.textContent = '▲';
-    }
-
-    function closeDropdown() {
-        dropdown.style.display = 'none';
-        btn.textContent = '▼';
-    }
-
-    btn.addEventListener('click', (e) => { e.stopPropagation(); if (dropdown.style.display === 'none') openDropdown(); else closeDropdown(); });
-    input.addEventListener('focus', openDropdown);
-    input.addEventListener('input', () => {
-        if (dropdown.style.display !== 'none') renderDropdown(input.value);
-        updateModelHint();
-        updateEstimate();
-    });
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest?.('#modelCombo') && !e.target.closest?.('#modelComboDropdown')) closeDropdown();
-    });
-
-    if (models.length > 0 && !input.value) {
-        input.value = models[0].id;
-        updateModelHint();
-        updateEstimate();
-    }
+/** 获取当前选中的模型 ID（从两个下拉读取） */
+function getSelectedModel() {
+    const modelSel = document.getElementById('modelSelect');
+    if (modelSel && modelSel.value) return modelSel.value;
+    // fallback: 旧版 combo input
+    const comboInput = document.getElementById('modelComboInput');
+    if (comboInput && comboInput.value) return comboInput.value;
+    return models.length > 0 ? models[0].id : '';
 }
 
-// initCustomModelToggle — 已整合入 combo input，保留空函数兼容旧调用
-function initCustomModelToggle() { }
+/** 测试本地 Provider（Ollama/vLLM）连接 */
+async function testLocalProvider(pId) {
+    const input = document.getElementById(`pf-${pId}-baseUrl`);
+    const baseUrl = input?.value || (pId === 'ollama' ? 'http://127.0.0.1:11434/v1' : 'http://127.0.0.1:8000/v1');
+    showToast(`正在测试 ${pId} (${baseUrl})...`);
+    try {
+        const res = await fetch(`${API}/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ [pId]: { baseUrl }, activeProvider: pId }),
+        });
+        if (res.ok) {
+            showToast(`✅ ${pId} 已设为激活`);
+            await loadConfig();
+            await loadModels();
+        }
+    } catch { showToast(`❌ 连接失败`); }
+}
+
+/** Google OAuth（跳转 Google AI Studio） */
+function startGoogleOAuth() {
+    window.open('https://aistudio.google.com/app/apikey', '_blank');
+    showToast('已打开 Google AI Studio，获取 API Key 后填入配置卡片');
+}
+
+/** 其他 Provider OAuth 占位函数 */
+function startOAuth(pId) {
+    showToast(`${pId} OAuth 暂未支持，请使用 API Key`);
+}
 
 // ===================== 费用预估 =====================
 async function updateEstimate() {
@@ -157,9 +191,11 @@ async function updateEstimate() {
 }
 
 function setupEstimateListeners() {
-    // combo input 已在 initModelCombo 中设置了 input 监听，这里只需监听其他触发源
-    const comboInput = document.getElementById('modelComboInput');
-    if (comboInput) comboInput.addEventListener('change', updateEstimate);
+    // 监听 provider 和 model 两个下拉的变化
+    const pSel = document.getElementById('providerSelect');
+    const mSel = document.getElementById('modelSelect');
+    if (pSel) pSel.addEventListener('change', updateEstimate);
+    if (mSel) mSel.addEventListener('change', updateEstimate);
 }
 
 // ===================== API 状态检查 =====================
@@ -541,72 +577,112 @@ async function fetchProviderMeta() {
     }
 }
 
-/** 渲染 Provider 卡片网格 */
+/** 渲染 Provider 卡片网格（分三个分组） */
 async function renderProviderGrid(conf) {
-    const grid = document.getElementById('providerGrid');
-    if (!grid) return;
+    const gridCloud = document.getElementById('providerGridCloud');
+    const gridCn = document.getElementById('providerGridCn');
+    const gridLocal = document.getElementById('providerGridLocal');
+    // 减色 fallback: 老版单个 grid
+    const gridLegacy = document.getElementById('providerGrid');
+    if (!gridCloud && !gridLegacy) return;
 
     const meta = await fetchProviderMeta();
-    if (!meta) { grid.innerHTML = '<div style="color:var(--text-muted);padding:16px">加载 Provider 信息失败</div>'; return; }
+    if (!meta) {
+        const err = '<div style="color:var(--text-muted);padding:16px">// 加载 Provider 信息失败</div>';
+        [gridCloud, gridCn, gridLocal, gridLegacy].forEach(g => { if (g) g.innerHTML = err; });
+        return;
+    }
 
     const activeProvider = conf.activeProvider || 'openai';
     const activeLabel = document.getElementById('activeProviderLabel');
     const activeInfo = meta[activeProvider];
     if (activeLabel && activeInfo) activeLabel.textContent = `${activeInfo.icon} ${activeInfo.label}`;
 
-    grid.innerHTML = Object.entries(meta).map(([pId, p]) => {
+    function renderCard(pId, p) {
         const pConf = conf.providers?.[pId] || { configured: false };
         const isConnected = pConf.configured;
         const isActive = pId === activeProvider;
+        const authType = p.authType || 'apikey';
 
-        const badge = isActive
-            ? `<span class="provider-badge active-label">✅ 激活中</span>`
-            : isConnected
-                ? `<span class="provider-badge connected">已配置</span>`
-                : '';
+        // 输入字段
+        let fieldsHtml = '';
+        if (authType === 'apikey') {
+            fieldsHtml = p.fields.map(f => `
+                <div class="provider-keyfield">
+                    <input type="password"
+                        class="provider-key-input"
+                        id="pf-${pId}-${f.key}"
+                        placeholder="${f.placeholder}"
+                        autocomplete="off">
+                    <div class="form-hint" style="margin-top:3px">${f.label}</div>
+                </div>
+            `).join('');
+        } else if (authType === 'none') {
+            fieldsHtml = p.fields.map(f => `
+                <div class="provider-keyfield">
+                    <input type="text"
+                        class="provider-key-input"
+                        id="pf-${pId}-${f.key}"
+                        placeholder="${f.placeholder}">
+                    <div class="form-hint" style="margin-top:3px">${f.label}</div>
+                </div>
+            `).join('');
+        }
 
-        const fields = p.fields.map(f => `
-            <div class="provider-key-input">
-                <input type="${f.type || 'password'}"
-                    class="form-input provider-field"
-                    id="pf-${pId}-${f.key}"
-                    placeholder="${f.placeholder}"
-                    autocomplete="off"
-                    value="">
-            </div>
-        `).join('');
+        // 按钮
+        const oauthBtn = authType === 'oauth' ? (() => {
+            const fn = pId === 'openrouter' ? `startOpenRouterOAuth()`
+                : pId === 'google' ? `startGoogleOAuth()`
+                    : `startOAuth('${pId}')`;
+            return `<button class="btn-oauth" onclick="${fn}">🔑 OAuth 授权</button>`;
+        })() : '';
 
-        const oauthBtn = p.hasOAuth ? `
-            <button class="btn-oauth" onclick="startOpenRouterOAuth()">
-                🔑 一键 OAuth 授权
-            </button>
-        ` : '';
+        const apiKeyBtn = authType === 'apikey' ?
+            `<button class="btn-save-key" onclick="saveProviderKey('${pId}')">[ 保存 Key ]</button>` : '';
+
+        const localTestBtn = authType === 'none' ?
+            `<button class="btn-test-local" onclick="testLocalProvider('${pId}')">[ 测试连接 ]</button>` : '';
+
+        const activateBtn = `
+            <button class="btn-set-active ${isActive ? 'btn-primary' : ''}" onclick="activateProvider('${pId}')">
+                ${isActive ? '[ ✓ 当前激活 ]' : '[ 设为激活 ]'}
+            </button>`;
+
+        const keyLink = p.keysPage ?
+            `<a href="${p.keysPage}" target="_blank" class="btn-ghost btn" style="font-size:0.65rem;padding:3px 8px">🔗 获取 Key</a>` : '';
+
+        const statusTag = isConnected || authType === 'none'
+            ? `<span class="provider-status-tag ok">${authType === 'none' ? 'LOCAL' : 'CONFIGURED'}</span>`
+            : `<span class="provider-status-tag unconfigured">NOT_SET</span>`;
 
         return `
-        <div class="provider-card ${isActive ? 'active' : ''} ${isConnected ? 'connected' : ''}" id="pcard-${pId}">
-            <div class="provider-card-header">
+        <div class="provider-card ${isActive ? 'active' : ''} ${isConnected ? 'configured' : ''}" id="pcard-${pId}">
+            <div class="provider-header">
                 <span class="provider-icon">${p.icon}</span>
-                <div class="provider-info">
-                    <div class="provider-name">${p.label}</div>
-                    <div class="provider-desc">${p.description}</div>
-                </div>
-                ${badge}
+                <span class="provider-name">${p.label}</span>
             </div>
-            <div class="provider-card-body">
-                ${fields}
-                <div class="provider-actions">
-                    ${oauthBtn}
-                    <button class="btn-use-provider ${isActive ? 'active-btn' : ''}"
-                        onclick="activateProvider('${pId}')">
-                        ${isActive ? '✓ 当前激活' : '设为激活'}
-                    </button>
-                    <a href="${p.keysPage}" target="_blank" class="provider-key-link">🔗 获取 Key</a>
-                </div>
+            <div class="provider-desc">${p.description}</div>
+            ${statusTag}
+            ${fieldsHtml}
+            <div class="provider-actions">
+                ${oauthBtn}${apiKeyBtn}${localTestBtn}${activateBtn}${keyLink}
             </div>
         </div>`;
-    }).join('');
+    }
 
-    // 显示已保存（脱敏）Key
+    // 按层渲染卡片
+    const byGroup = { cloud: [], cn: [], local: [] };
+    for (const [pId, p] of Object.entries(meta)) {
+        const g = p.group || 'cloud';
+        if (byGroup[g]) byGroup[g].push([pId, p]);
+    }
+
+    if (gridCloud) gridCloud.innerHTML = byGroup.cloud.map(([pId, p]) => renderCard(pId, p)).join('');
+    if (gridCn) gridCn.innerHTML = byGroup.cn.map(([pId, p]) => renderCard(pId, p)).join('');
+    if (gridLocal) gridLocal.innerHTML = byGroup.local.map(([pId, p]) => renderCard(pId, p)).join('');
+    if (gridLegacy && !gridCloud) gridLegacy.innerHTML = Object.entries(meta).map(([pId, p]) => renderCard(pId, p)).join('');
+
+    // 显示已保存（脚敏）Key placeholder
     Object.entries(conf.providers || {}).forEach(([pId, pConf]) => {
         if (pConf.configured && pConf.apiKey) {
             const el = document.getElementById(`pf-${pId}-apiKey`);
