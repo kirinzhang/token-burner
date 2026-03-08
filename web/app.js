@@ -157,7 +157,9 @@ async function updateEstimate() {
 }
 
 function setupEstimateListeners() {
-    document.getElementById('modelSelect').addEventListener('change', updateEstimate);
+    // combo input 已在 initModelCombo 中设置了 input 监听，这里只需监听其他触发源
+    const comboInput = document.getElementById('modelComboInput');
+    if (comboInput) comboInput.addEventListener('change', updateEstimate);
 }
 
 // ===================== API 状态检查 =====================
@@ -167,9 +169,12 @@ async function checkApiStatus() {
     try {
         const res = await fetch(`${API}/config`);
         const conf = await res.json();
-        if (conf.apiKeyConfigured) {
+        // 新格式：conf.providers 和 conf.customProviders
+        const hasBuiltin = conf.providers && Object.values(conf.providers).some(p => p.configured);
+        const hasCustom = (conf.customProviders || []).some(cp => cp.apiKey);
+        if (hasBuiltin || hasCustom) {
             dot.className = 'status-dot ok';
-            label.textContent = `已就绪 (${conf.apiKeySource === 'env' ? '.env' : '配置文件'})`;
+            label.textContent = `已就绪 (${conf.activeProvider || 'openai'})`;
         } else {
             dot.className = 'status-dot err';
             label.textContent = '未配置 API Key';
@@ -800,3 +805,65 @@ async function deleteCustomProvider(id) {
         await loadModels();
     }
 }
+
+// === Restored: initTabs ===
+function initTabs() {
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.dataset.tab;
+            document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(`panel-${tab}`).classList.add('active');
+            if (tab === 'history') loadHistory();
+        });
+    });
+}
+
+// === Restored: initStrategyCards ===
+function initStrategyCards() {
+    document.querySelectorAll('.strategy-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.strategy-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            const radio = card.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+            updateEstimate();
+        });
+    });
+}
+
+// === Restored: initTokenPresets ===
+function initTokenPresets() {
+    document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('tokenTarget').value = btn.dataset.value;
+            updateEstimate();
+        });
+    });
+
+    document.getElementById('tokenTarget').addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        document.querySelectorAll('.preset-btn').forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.value) === val);
+        });
+        updateEstimate();
+    });
+}
+
+// ===================== 初始化入口 =====================
+document.addEventListener('DOMContentLoaded', async () => {
+    initOAuth();               // 检测 OpenRouter OAuth 回调
+    initTabs();                // 侧边栏 Tab 切换
+    initStrategyCards();       // 策略选择卡片
+    initTokenPresets();        // Token 预设按钮
+    setupEstimateListeners();  // 费用预估监听
+    initCustomModelToggle();   // 兼容旧占位（空函数）
+    await loadModels();        // 加载模型列表 → 初始化 combo input
+    await loadConfig();        // 加载配置 → 渲染 Provider 卡片
+    await loadHistory();       // 加载历史记录
+    setupButtons();            // 绑定所有静态按钮事件
+    await checkApiStatus();    // 检查 API 状态
+});
